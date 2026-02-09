@@ -9,16 +9,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
-        // Provide a safety fallback for process.env in browser environments
         window.process = window.process || { env: {} };
     </script>
     <style>
         :root {
             --primary: #06b6d4;
-            --primary-glow: rgba(6, 182, 212, 0.2);
+            --primary-glow: rgba(6, 182, 212, 0.3);
             --bg-deep: #020617;
-            --panel-bg: rgba(15, 23, 42, 0.7);
-            --border-glow: rgba(255, 255, 255, 0.05);
+            --panel-bg: rgba(15, 23, 42, 0.6);
+            --border-glow: rgba(6, 182, 212, 0.15);
         }
         
         body { 
@@ -29,49 +28,86 @@
             padding: 0;
             height: 100vh;
             overflow: hidden;
+            -webkit-font-smoothing: antialiased;
         }
 
         .bg-grid {
-            background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0);
-            background-size: 32px 32px;
+            background-image: 
+                radial-gradient(circle at 2px 2px, rgba(6, 182, 212, 0.05) 1px, transparent 0),
+                linear-gradient(to right, rgba(6, 182, 212, 0.02) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(6, 182, 212, 0.02) 1px, transparent 1px);
+            background-size: 40px 40px, 100px 100px, 100px 100px;
         }
 
-        .glass-card {
+        .glass-tech {
             background: var(--panel-bg);
-            backdrop-filter: blur(16px);
+            backdrop-filter: blur(20px);
             border: 1px solid var(--border-glow);
-            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
         }
 
-        .code-scroll::-webkit-scrollbar { width: 5px; }
+        .cyber-border {
+            position: relative;
+            overflow: hidden;
+        }
+        .cyber-border::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            animation: cyber-line 3s infinite linear;
+        }
+
+        @keyframes cyber-line {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .code-scroll::-webkit-scrollbar { width: 4px; }
         .code-scroll::-webkit-scrollbar-track { background: transparent; }
-        .code-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .code-scroll::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.2); border-radius: 10px; }
         .code-scroll::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
-        @keyframes pulse-glow {
-            0% { box-shadow: 0 0 0 0 var(--primary-glow); }
-            70% { box-shadow: 0 0 0 15px rgba(6, 182, 212, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+        .active-nav {
+            background: linear-gradient(135deg, var(--primary), #3b82f6);
+            color: #000 !important;
+            box-shadow: 0 0 20px var(--primary-glow);
         }
 
-        .active-pulse {
-            animation: pulse-glow 2s infinite;
+        .phone-frame-scale {
+            transform: scale(0.9);
+            transform-origin: center top;
+        }
+        @media (max-width: 768px) {
+            .phone-frame-scale {
+                transform: scale(0.85);
+            }
+        }
+        @media (max-width: 480px) {
+            .phone-frame-scale {
+                transform: scale(0.75);
+            }
         }
 
-        .mic-active {
-            animation: mic-pulse 1.5s infinite;
-            background-color: #ef4444 !important;
-            color: white !important;
+        .neo-shadow {
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
         }
 
-        @keyframes mic-pulse {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        .shimmer-bg {
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0.05) 50%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite linear;
         }
 
-        @media (max-height: 500px) {
-            .mobile-hide { display: none; }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
         }
     </style>
 <script type="importmap">
@@ -89,7 +125,6 @@
 </head>
 <body class="bg-grid">
     <div id="root"></div>
-    <!-- Explicitly load the entry point -->
     <script type="module" src="index.tsx"></script>
 </body>
 </html>

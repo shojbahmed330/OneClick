@@ -1,4 +1,4 @@
--- ১. ইউজার টেবিল ও কলাম সেটআপ (Users Table with Profile Picture support)
+-- ১. ইউজার টেবিল ও কলাম সেটআপ
 CREATE TABLE IF NOT EXISTS public.users (
   id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
@@ -11,14 +11,14 @@ CREATE TABLE IF NOT EXISTS public.users (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- কলামগুলো নিশ্চিত করা (Add Missing Columns if not exist)
+-- কলামগুলো নিশ্চিত করা
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS bio TEXT;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS tokens INTEGER DEFAULT 10;
 
--- ২. প্যাকেজ টেবিল (Packages Table)
+-- ২. প্যাকেজ টেবিল
 CREATE TABLE IF NOT EXISTS public.packages (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   name TEXT NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS public.packages (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- ৩. ট্রানজেকশন টেবিল (Transactions Table)
+-- ৩. ট্রানজেকশন টেবিল
 CREATE TABLE IF NOT EXISTS public.transactions (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- ৪. অ্যাক্টিভিটি লগ টেবিল (Activity Logs Table)
+-- ৪. অ্যাক্টিভিটি লগ টেবিল
 CREATE TABLE IF NOT EXISTS public.activity_logs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   admin_id TEXT,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- ৫. রিয়েল-টাইম পাবলিকেশন ফিক্স (ERROR 42710 Solution)
+-- ৫. রিয়েল-টাইম পাবলিকেশন ফিক্স
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -70,20 +70,22 @@ BEGIN
     END IF;
 END $$;
 
--- ৬. সিকিউরিটি পলিসি (RLS & Secure Policies - Fixed 'admin_list' error)
+-- ৬. সিকিউরিটি পলিসি (RLS & Secure Policies with Ban Check)
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.packages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
--- ইউজার প্রোফাইল পলিসি
+-- ইউজার প্রোফাইল পলিসি (ব্যান চেক সহ)
 DROP POLICY IF EXISTS "Users can view own profile" ON public.users;
-CREATE POLICY "Users can view own profile" ON public.users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can view own profile" ON public.users FOR SELECT 
+USING (auth.uid() = id AND is_banned = false);
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
-CREATE POLICY "Users can update own profile" ON public.users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON public.users FOR UPDATE 
+USING (auth.uid() = id AND is_banned = false);
 
--- এডমিন ইউজার ম্যানেজমেন্ট পলিসি (Hardcoded Admin List)
+-- এডমিন ইউজার ম্যানেজমেন্ট পলিসি
 DROP POLICY IF EXISTS "Admins view all users" ON public.users;
 CREATE POLICY "Admins view all users" ON public.users FOR SELECT 
 USING (auth.jwt() ->> 'email' = ANY(ARRAY['rajshahi.shojib@gmail.com', 'rajshahi.jibon@gmail.com', 'rajshahi.sumi@gmail.com']));
@@ -100,13 +102,14 @@ DROP POLICY IF EXISTS "Admins manage packages" ON public.packages;
 CREATE POLICY "Admins manage packages" ON public.packages FOR ALL 
 USING (auth.jwt() ->> 'email' = ANY(ARRAY['rajshahi.shojib@gmail.com', 'rajshahi.jibon@gmail.com', 'rajshahi.sumi@gmail.com']));
 
--- ট্রানজেকশন পলিসি
+-- ট্রানজেকশন পলিসি (ব্যান চেক সহ)
 DROP POLICY IF EXISTS "Users view own transactions" ON public.transactions;
-CREATE POLICY "Users view own transactions" ON public.transactions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users view own transactions" ON public.transactions FOR SELECT 
+USING (auth.uid() = user_id AND (SELECT is_banned FROM users WHERE id = auth.uid()) = false);
 
 DROP POLICY IF EXISTS "Allow users to create transactions" ON public.transactions;
 CREATE POLICY "Allow users to create transactions" ON public.transactions FOR INSERT 
-WITH CHECK (auth.uid() = user_id);
+WITH CHECK (auth.uid() = user_id AND (SELECT is_banned FROM users WHERE id = auth.uid()) = false);
 
 DROP POLICY IF EXISTS "Admins manage transactions" ON public.transactions;
 CREATE POLICY "Admins manage transactions" ON public.transactions FOR ALL 
@@ -121,7 +124,7 @@ DROP POLICY IF EXISTS "Admins can insert logs" ON public.activity_logs;
 CREATE POLICY "Admins can insert logs" ON public.activity_logs FOR INSERT 
 WITH CHECK (auth.jwt() ->> 'email' = ANY(ARRAY['rajshahi.shojib@gmail.com', 'rajshahi.jibon@gmail.com', 'rajshahi.sumi@gmail.com']));
 
--- ৭. অটোমেটিক প্রোফাইল তৈরির ট্রিগার (Profile Creation on Sign-up)
+-- ৭. অটোমেটিক প্রোফাইল তৈরির ট্রিগার
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -142,7 +145,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- ৮. ডামি প্যাকেজ ইনসার্ট (Seed Data)
+-- ৮. ডামি প্যাকেজ ইনসার্ট
 INSERT INTO public.packages (name, tokens, price, color, icon, is_popular)
 VALUES 
 ('Developer Starter', 50, 500, 'cyan', 'Package', false),
