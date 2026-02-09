@@ -524,7 +524,7 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {packages.map(p => (
                   <div key={p.id} className="glass-tech p-10 rounded-[3rem] text-center relative border-white/5 group">
-                    <PackageIcon size={48} className="mx-auto text-pink-500 mb-6" />
+                    <PackageIcon size={48} className="mx-auto text-pink-500 mb-6 group-hover:scale-125 transition-transform"/>
                     <h3 className="text-2xl font-black text-white">{p.name}</h3>
                     <div className="text-5xl font-black text-white my-6 tracking-tighter">{p.tokens} <span className="text-[10px] opacity-30 tracking-[0.4em]">UNITS</span></div>
                     <div className="text-2xl font-black text-pink-500 mb-8">৳{p.price}</div>
@@ -621,22 +621,18 @@ const App: React.FC = () => {
       const txChannel = db.supabase
         .channel(`tx_updates_${user.id}`)
         .on('postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` },
+          { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` },
           (payload) => {
-            const oldTx = payload.old as Transaction;
             const newTx = payload.new as Transaction;
             
-            // If status changed to completed, notify user
-            if (newTx.status === 'completed' && oldTx.status === 'pending') {
+            // ইফ ইউজার প্রোফাইল পেজে থাকে, ট্রানজেকশন লিস্ট আপডেট করো
+            if (mode === AppMode.PROFILE) {
+              db.getUserTransactions(user.id).then(setUserTransactions);
+            }
+
+            // যদি স্ট্যাটাস পরিবর্তন হয়ে 'completed' হয়, তবে এলার্ট দেখাও
+            if (newTx && newTx.status === 'completed') {
               setApprovalNotify({ show: true, amount: newTx.amount });
-              // Refresh history if in profile
-              if (mode === AppMode.PROFILE) {
-                db.getUserTransactions(user.id).then(setUserTransactions);
-              }
-            } else if (newTx.status === 'rejected') {
-               if (mode === AppMode.PROFILE) {
-                 db.getUserTransactions(user.id).then(setUserTransactions);
-               }
             }
           }
         )
@@ -841,14 +837,14 @@ const App: React.FC = () => {
     <div className="h-[100dvh] flex flex-col text-slate-100 bg-[#0a0110] overflow-hidden">
       {/* Real-time Approval Notification */}
       {approvalNotify && approvalNotify.show && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in zoom-in duration-500">
-           <div className="glass-tech p-12 rounded-[3.5rem] text-center max-w-sm border-pink-500/30 shadow-[0_0_80px_rgba(34,197,94,0.3)] border-2">
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-2xl animate-in fade-in duration-500">
+           <div className="glass-tech p-12 rounded-[3.5rem] text-center max-w-sm border-pink-500/40 shadow-[0_0_100px_rgba(255,45,117,0.4)] border-2 animate-in zoom-in duration-500">
               <div className="w-24 h-24 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-8 border-2 border-green-500/50 shadow-lg animate-bounce">
                 <CheckCircle size={48}/>
               </div>
               <h3 className="text-3xl font-black mb-4 text-white uppercase tracking-tighter">Payment Confirmed!</h3>
               <p className="text-sm text-slate-400 leading-relaxed mb-10">আপনার পেমেন্ট রিকোয়েস্টটি অ্যাপ্রুভ করা হয়েছে। সফলভাবে <span className="text-pink-400 font-bold">৳{approvalNotify.amount}</span> যোগ করা হয়েছে।</p>
-              <button onClick={() => setApprovalNotify(null)} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95">Great!</button>
+              <button onClick={() => setApprovalNotify(null)} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95 transition-all">Great!</button>
            </div>
         </div>
       )}
@@ -1063,35 +1059,39 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
-                {/* Payment History Section */}
-                <div className="glass-tech p-8 md:p-10 rounded-[2.5rem] border-white/5 space-y-6 shadow-xl">
-                   <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3"><History className="text-pink-500"/> My <span className="text-pink-500">Payments</span></h3>
-                   <div className="space-y-4">
+                {/* Recent Payments - Only show last 3 */}
+                <div className="glass-tech p-8 md:p-10 rounded-[2.5rem] border-white/5 space-y-6 shadow-xl relative overflow-hidden">
+                   <div className="absolute top-0 right-0 p-8 opacity-10"><History size={80}/></div>
+                   <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3 relative z-10"><History className="text-pink-500"/> Recent <span className="text-pink-500">Payments</span></h3>
+                   <div className="space-y-4 relative z-10">
                       {userTransactions.length > 0 ? (
-                        userTransactions.map(tx => (
-                          <div key={tx.id} className="flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/5 gap-4">
+                        userTransactions.slice(0, 3).map(tx => (
+                          <div key={tx.id} className="flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/10 gap-4 group hover:bg-white/[0.08] transition-all">
                              <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-xl ${tx.status === 'completed' ? 'bg-green-500/10 text-green-400' : tx.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
+                                <div className={`p-3 rounded-xl ${tx.status === 'completed' ? 'bg-green-500/20 text-green-400' : tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400'}`}>
                                    <CreditCard size={20} />
                                 </div>
                                 <div>
-                                   <div className="font-bold text-white text-sm">৳{tx.amount} • {tx.payment_method}</div>
-                                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">TrxID: {tx.trx_id}</div>
+                                   <div className="font-black text-white text-sm uppercase">৳{tx.amount} • {tx.payment_method}</div>
+                                   <div className="text-[10px] text-slate-500 font-mono mt-0.5 tracking-wider">TrxID: {tx.trx_id}</div>
                                 </div>
                              </div>
                              <div className="flex items-center justify-between md:flex-col md:items-end gap-2">
-                                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider ${tx.status === 'completed' ? 'bg-green-600/20 text-green-400' : tx.status === 'pending' ? 'bg-yellow-600/20 text-yellow-400' : 'bg-red-600/20 text-red-400'}`}>
+                                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] ${tx.status === 'completed' ? 'bg-green-600/20 text-green-400 border border-green-500/20' : tx.status === 'pending' ? 'bg-yellow-600/20 text-yellow-400 border border-yellow-500/20' : 'bg-red-600/20 text-red-400 border border-red-500/20'}`}>
                                    {tx.status}
                                 </span>
-                                <span className="text-[10px] text-slate-600">{new Date(tx.created_at).toLocaleDateString()}</span>
+                                <span className="text-[10px] text-slate-600 font-bold">{new Date(tx.created_at).toLocaleDateString()}</span>
                              </div>
                           </div>
                         ))
                       ) : (
                         <div className="text-center py-10 text-slate-600">
                            <div className="mb-4 flex justify-center"><XCircle size={32} opacity={0.3}/></div>
-                           <p className="text-xs font-black uppercase tracking-widest">No payment records found.</p>
+                           <p className="text-xs font-black uppercase tracking-[0.3em]">No payment records found.</p>
                         </div>
+                      )}
+                      {userTransactions.length > 3 && (
+                        <p className="text-center text-[10px] font-black uppercase tracking-widest text-slate-600">Only showing last 3 transactions</p>
                       )}
                    </div>
                 </div>
