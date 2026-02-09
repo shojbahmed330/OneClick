@@ -9,7 +9,7 @@ import {
   FileJson, Layout, Users, BarChart3, Clock, Wallet, CheckCircle2, XCircle, Search, TrendingUp,
   Plus, Edit2, Ban, ShieldX, LayoutDashboard, History, Gift, Filter, Bell, ListTodo,
   Trophy, Star, Award, Layers, Target, Code2, Sparkles, BrainCircuit, ShieldEllipsis, 
-  Fingerprint as BioIcon, Camera, Laptop, Tablet, Menu, Smartphone as MobileIcon, Eye as ViewIcon, ExternalLink, Calendar
+  Fingerprint as BioIcon, Camera, Laptop, Tablet, Menu, Smartphone as MobileIcon, Eye as ViewIcon, ExternalLink, Calendar, Coins
 } from 'lucide-react';
 import { AppMode, ChatMessage, User as UserType, GithubConfig, Package, Transaction, ActivityLog } from './types';
 import { GeminiService } from './services/geminiService';
@@ -161,6 +161,14 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   const [packages, setPackages] = useState<Package[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // New Admin States
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
+  const [newTokenCount, setNewTokenCount] = useState<number>(0);
+  const [showPackageModal, setShowPackageModal] = useState(false);
+  const [newPackage, setNewPackage] = useState({ name: '', tokens: 0, price: 0 });
+
   const db = DatabaseService.getInstance();
 
   const loadData = async () => {
@@ -180,12 +188,11 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   useEffect(() => { loadData(); }, [activeTab]);
 
   const handleApprove = async (txId: string) => {
-    if (!confirm("Approve this payment? Tokens will be added instantly to the user's account.")) return;
+    if (!confirm("Approve this payment? Tokens will be added instantly.")) return;
     try {
       const success = await db.approveTransaction(txId);
       if (success) {
         await db.logActivity(user.email, 'PAYMENT_APPROVE', `Approved TX: ${txId}`);
-        alert("Payment Approved! Tokens synchronized.");
         loadData();
       }
     } catch (e: any) { alert(e.message); }
@@ -200,21 +207,83 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
     } catch (e: any) { alert(e.message); }
   };
 
-  const handleBan = async (uid: string, email: string) => {
-    if (!confirm(`Ban user ${email}?`)) return;
-    await db.supabase.from('users').update({ is_banned: true }).eq('id', uid);
-    await db.logActivity(user.email, 'USER_BAN', `Banned: ${email}`);
+  const handleBanToggle = async (uid: string, email: string, currentStatus: boolean) => {
+    if (!confirm(`${currentStatus ? 'Unsuspend' : 'Suspend'} user ${email}?`)) return;
+    await db.supabase.from('users').update({ is_banned: !currentStatus }).eq('id', uid);
+    await db.logActivity(user.email, currentStatus ? 'USER_UNBAN' : 'USER_BAN', `${currentStatus ? 'Unbanned' : 'Banned'}: ${email}`);
     loadData();
   };
 
-  const handleUnban = async (uid: string, email: string) => {
-    await db.supabase.from('users').update({ is_banned: false }).eq('id', uid);
-    await db.logActivity(user.email, 'USER_UNBAN', `Unbanned: ${email}`);
-    loadData();
+  const handleUpdateTokens = async () => {
+    if (!editingUser) return;
+    try {
+      await db.supabase.from('users').update({ tokens: newTokenCount }).eq('id', editingUser.id);
+      await db.logActivity(user.email, 'USER_TOKEN_EDIT', `Updated ${editingUser.email} tokens to ${newTokenCount}`);
+      setEditingUser(null);
+      loadData();
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const handleCreatePackage = async () => {
+    if (!newPackage.name || newPackage.price <= 0) return;
+    try {
+      await db.supabase.from('packages').insert({
+        name: newPackage.name,
+        tokens: newPackage.tokens,
+        price: newPackage.price,
+        color: 'pink',
+        icon: 'Package'
+      });
+      setShowPackageModal(false);
+      loadData();
+    } catch (e: any) { alert(e.message); }
   };
 
   return (
     <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden bg-[#050108]">
+      {/* --- Image Preview Modal --- */}
+      {previewImage && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in zoom-in duration-300">
+           <button onClick={() => setPreviewImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-pink-600 rounded-full text-white transition-all"><X size={24}/></button>
+           <img src={previewImage} className="max-w-full max-h-full object-contain rounded-2xl shadow-[0_0_100px_rgba(255,45,117,0.4)]" />
+        </div>
+      )}
+
+      {/* --- Token Edit Modal --- */}
+      {editingUser && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+           <div className="glass-tech p-10 rounded-[2.5rem] w-full max-w-sm border-pink-500/20 shadow-2xl animate-in zoom-in">
+              <h3 className="text-xl font-black mb-6 text-white uppercase tracking-tight">Edit <span className="text-pink-500">Credits</span></h3>
+              <p className="text-[10px] text-slate-500 uppercase font-bold mb-4">{editingUser.email}</p>
+              <div className="space-y-4">
+                 <input type="number" value={newTokenCount} onChange={e => setNewTokenCount(parseInt(e.target.value))} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-xl font-black outline-none focus:border-pink-500/50" />
+                 <div className="flex gap-2">
+                    <button onClick={handleUpdateTokens} className="flex-1 py-3 bg-pink-600 rounded-xl font-black text-xs uppercase shadow-lg">Save Update</button>
+                    <button onClick={() => setEditingUser(null)} className="px-6 py-3 bg-white/5 rounded-xl font-black text-xs uppercase">Cancel</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- New Package Modal --- */}
+      {showPackageModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+           <div className="glass-tech p-10 rounded-[2.5rem] w-full max-w-md border-pink-500/20 animate-in zoom-in">
+              <h3 className="text-xl font-black mb-6 text-white uppercase">New <span className="text-pink-500">Package</span></h3>
+              <div className="space-y-4">
+                 <input placeholder="Package Name" value={newPackage.name} onChange={e => setNewPackage({...newPackage, name: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm" />
+                 <input type="number" placeholder="Token Count" value={newPackage.tokens} onChange={e => setNewPackage({...newPackage, tokens: parseInt(e.target.value)})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm" />
+                 <input type="number" placeholder="Price (BDT)" value={newPackage.price} onChange={e => setNewPackage({...newPackage, price: parseInt(e.target.value)})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm" />
+                 <div className="flex gap-2 pt-4">
+                    <button onClick={handleCreatePackage} className="flex-1 py-4 bg-pink-600 rounded-xl font-black text-xs uppercase">Deploy Package</button>
+                    <button onClick={() => setShowPackageModal(false)} className="px-6 py-4 bg-white/5 rounded-xl font-black text-xs uppercase">Close</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
       <aside className="w-full md:w-64 border-r border-pink-500/10 bg-black/40 p-6 flex flex-col gap-2">
         <div className="mb-8 px-2">
           <h2 className="text-xl font-black tracking-tighter text-pink-500">ADMIN <span className="text-white">HQ</span></h2>
@@ -227,13 +296,13 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
           { id: 'packages', icon: PackageIcon, label: 'Packages' },
           { id: 'logs', icon: Terminal, label: 'System Logs' }
         ].map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-xs font-black uppercase transition-all ${activeTab === tab.id ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white/5'}`}>
+          <button key={tab.id} onClick={() => { setActiveTab(tab.id as any); setSearchQuery(''); }} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-xs font-black uppercase transition-all ${activeTab === tab.id ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white/5'}`}>
             <tab.icon size={18} /> {tab.label}
           </button>
         ))}
       </aside>
 
-      <main className="flex-1 p-6 md:p-10 overflow-y-auto code-scroll">
+      <main className="flex-1 p-6 md:p-10 overflow-y-auto code-scroll relative">
         {loading ? <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-pink-500" size={40}/></div> : (
           <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
             {activeTab === 'stats' && (
@@ -256,62 +325,61 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
             )}
 
             {activeTab === 'payments' && (
-              <div className="glass-tech rounded-[2.5rem] overflow-hidden border-white/5">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-white/5 text-pink-500 font-black uppercase tracking-widest">
-                    <tr>
-                      <th className="p-6">User/Email</th>
-                      <th className="p-6">Amount</th>
-                      <th className="p-6">Method/Trx</th>
-                      <th className="p-6">Details</th>
-                      <th className="p-6">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {transactions.map(tx => (
-                      <tr key={tx.id} className="hover:bg-white/5 transition-colors">
-                        <td className="p-6 font-bold">{tx.user_email}</td>
-                        <td className="p-6 font-black text-white">৳{tx.amount}</td>
-                        <td className="p-6"><span className="text-pink-400 font-mono">{tx.payment_method}</span><br/><span className="opacity-50">{tx.trx_id}</span></td>
-                        <td className="p-6">
-                          <div className="flex flex-col gap-3">
-                            {tx.message ? (
-                              <div className="p-3 bg-white/5 rounded-xl border border-white/5 text-[11px] text-slate-300 leading-relaxed italic">
-                                "{tx.message}"
-                              </div>
-                            ) : (
-                              <span className="text-[10px] text-slate-600 uppercase font-bold tracking-widest">No Message</span>
-                            )}
-                            
-                            {tx.screenshot_url ? (
-                              <div 
-                                onClick={() => window.open(tx.screenshot_url, '_blank')}
-                                className="relative group w-24 h-16 overflow-hidden rounded-xl cursor-pointer border border-white/10 hover:border-pink-500/50 transition-all shadow-xl"
-                              >
-                                 <img src={tx.screenshot_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                                 <div className="absolute inset-0 bg-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                   <ViewIcon size={16} className="text-white drop-shadow-lg"/>
-                                 </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 text-slate-600 text-[10px] font-black uppercase">
-                                <XCircle size={12}/> No Proof
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-6">
-                          {tx.status === 'pending' ? (
-                            <div className="flex gap-2">
-                              <button onClick={() => handleApprove(tx.id)} className="p-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500 hover:text-white transition-all"><Check size={16}/></button>
-                              <button onClick={() => handleReject(tx.id)} className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all"><X size={16}/></button>
-                            </div>
-                          ) : <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${tx.status === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{tx.status}</span>}
-                        </td>
+              <div className="space-y-6">
+                <div className="glass-tech rounded-2xl p-4 border-white/5 flex items-center gap-4">
+                  <Search className="text-slate-500" size={20}/>
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Filter by TrxID or User Email..." className="flex-1 bg-transparent outline-none text-sm" />
+                </div>
+                <div className="glass-tech rounded-[2.5rem] overflow-hidden border-white/5">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-white/5 text-pink-500 font-black uppercase tracking-widest">
+                      <tr>
+                        <th className="p-6">User/Email</th>
+                        <th className="p-6">Amount</th>
+                        <th className="p-6">Method/Trx</th>
+                        <th className="p-6">Details</th>
+                        <th className="p-6">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {transactions.filter(tx => 
+                        tx.trx_id?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        tx.user_email?.toLowerCase().includes(searchQuery.toLowerCase())
+                      ).map(tx => (
+                        <tr key={tx.id} className="hover:bg-white/5 transition-colors">
+                          <td className="p-6 font-bold">{tx.user_email}</td>
+                          <td className="p-6 font-black text-white">৳{tx.amount}</td>
+                          <td className="p-6"><span className="text-pink-400 font-mono">{tx.payment_method}</span><br/><span className="opacity-50">{tx.trx_id}</span></td>
+                          <td className="p-6">
+                            <div className="flex flex-col gap-3">
+                              {tx.message && (
+                                <div className="p-3 bg-white/5 rounded-xl border border-white/5 text-[11px] text-slate-300 leading-relaxed italic">"{tx.message}"</div>
+                              )}
+                              {tx.screenshot_url ? (
+                                <div onClick={() => setPreviewImage(tx.screenshot_url!)} className="relative group w-24 h-16 overflow-hidden rounded-xl cursor-pointer border border-white/10 hover:border-pink-500/50 transition-all shadow-xl">
+                                   <img src={tx.screenshot_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                   <div className="absolute inset-0 bg-pink-500/20 opacity-0 group-hover:opacity-100 flex items-center justify-center">
+                                     <ViewIcon size={16} className="text-white drop-shadow-lg"/>
+                                   </div>
+                                </div>
+                              ) : (
+                                <div className="text-slate-600 text-[10px] font-black uppercase flex items-center gap-1"><XCircle size={12}/> No Proof</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-6">
+                            {tx.status === 'pending' ? (
+                              <div className="flex gap-2">
+                                <button onClick={() => handleApprove(tx.id)} className="p-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500 hover:text-white transition-all"><Check size={16}/></button>
+                                <button onClick={() => handleReject(tx.id)} className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all"><X size={16}/></button>
+                              </div>
+                            ) : <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${tx.status === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{tx.status}</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -319,12 +387,12 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
               <div className="space-y-6">
                 <div className="glass-tech rounded-2xl p-4 border-white/5 flex items-center gap-4">
                   <Search className="text-slate-500" size={20}/>
-                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search member by email or ID..." className="flex-1 bg-transparent outline-none text-sm" />
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search member by email or name..." className="flex-1 bg-transparent outline-none text-sm" />
                 </div>
                 <div className="glass-tech rounded-[2.5rem] overflow-hidden border-white/5">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-white/5 text-pink-500 font-black uppercase">
-                      <tr><th className="p-6">Member</th><th className="p-6">Tokens</th><th className="p-6">Status</th><th className="p-6">Control</th></tr>
+                      <tr><th className="p-6">Member</th><th className="p-6">Credits</th><th className="p-6">Status</th><th className="p-6">Control</th></tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {adminUsers.filter(u => u.email.includes(searchQuery)).map(u => (
@@ -335,14 +403,19 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                               <div><div className="font-black text-white">{u.name}</div><div className="opacity-50 text-[10px]">{u.email}</div></div>
                             </div>
                           </td>
-                          <td className="p-6 font-mono text-pink-400 font-black text-lg">{u.tokens}</td>
-                          <td className="p-6">{u.is_banned ? <span className="text-red-500">Suspended</span> : <span className="text-green-400">Clear</span>}</td>
                           <td className="p-6">
-                            {u.is_banned ? (
-                              <button onClick={() => handleUnban(u.id, u.email)} className="px-4 py-2 bg-green-600 rounded-xl font-black uppercase text-[10px]">Unsuspend</button>
-                            ) : (
-                              <button onClick={() => handleBan(u.id, u.email)} className="px-4 py-2 bg-red-600/20 text-red-500 border border-red-500/20 rounded-xl font-black uppercase text-[10px] hover:bg-red-600 hover:text-white transition-all">Terminate</button>
-                            )}
+                            <div className="flex items-center gap-3">
+                               <span className="font-mono text-pink-400 font-black text-lg">{u.tokens}</span>
+                               <button onClick={() => { setEditingUser(u); setNewTokenCount(u.tokens); }} className="p-2 bg-white/5 hover:bg-pink-600/20 rounded-lg text-pink-400 transition-all"><Coins size={14}/></button>
+                            </div>
+                          </td>
+                          <td className="p-6">{u.is_banned ? <span className="text-red-500 font-bold uppercase tracking-widest text-[10px]">Suspended</span> : <span className="text-green-400 font-bold uppercase tracking-widest text-[10px]">Clear</span>}</td>
+                          <td className="p-6">
+                             <div className="flex gap-2">
+                                <button onClick={() => handleBanToggle(u.id, u.email, u.is_banned || false)} className={`px-4 py-2 rounded-xl font-black uppercase text-[10px] transition-all ${u.is_banned ? 'bg-green-600' : 'bg-red-600/20 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white'}`}>
+                                  {u.is_banned ? 'Unsuspend' : 'Terminate'}
+                                </button>
+                             </div>
                           </td>
                         </tr>
                       ))}
@@ -366,7 +439,7 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                     </div>
                   </div>
                 ))}
-                <button className="glass-tech p-10 rounded-[3rem] border-dashed border-2 border-white/10 flex flex-col items-center justify-center gap-4 hover:border-pink-500/50 transition-all group">
+                <button onClick={() => setShowPackageModal(true)} className="glass-tech p-10 rounded-[3rem] border-dashed border-2 border-white/10 flex flex-col items-center justify-center gap-4 hover:border-pink-500/50 transition-all group min-h-[400px]">
                    <Plus size={48} className="text-slate-500 group-hover:text-pink-500 group-hover:scale-110 transition-all"/>
                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">Create New Package</span>
                 </button>
@@ -506,7 +579,6 @@ const App: React.FC = () => {
     } catch (e: any) { alert("Download failed: " + e.message); } finally { setIsDownloading(false); }
   };
 
-  // Helper to convert file to base64 for submission
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -562,7 +634,6 @@ const App: React.FC = () => {
     return <AuthPage onLoginSuccess={setUser} />;
   }
 
-  // Admin Route Logic
   if (user.isAdmin && (path === '/admin' || mode === AppMode.ADMIN)) {
     return (
       <div className="h-screen flex flex-col text-slate-100 bg-[#0a0110]">
