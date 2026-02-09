@@ -13,17 +13,17 @@
     </script>
     <style>
         :root {
-            --primary: #06b6d4;
-            --primary-glow: rgba(6, 182, 212, 0.3);
-            --bg-deep: #020617;
-            --panel-bg: rgba(15, 23, 42, 0.6);
-            --border-glow: rgba(6, 182, 212, 0.15);
+            --primary: #ff2d75;
+            --primary-glow: rgba(255, 45, 117, 0.3);
+            --bg-deep: #0a0110;
+            --panel-bg: rgba(20, 10, 30, 0.7);
+            --border-glow: rgba(255, 45, 117, 0.2);
         }
         
         body { 
             font-family: 'Hind Siliguri', 'Plus Jakarta Sans', sans-serif; 
             background-color: var(--bg-deep);
-            color: #f1f5f9;
+            color: #fce7f3;
             margin: 0;
             padding: 0;
             height: 100vh;
@@ -33,24 +33,24 @@
 
         .bg-grid {
             background-image: 
-                radial-gradient(circle at 2px 2px, rgba(6, 182, 212, 0.05) 1px, transparent 0),
-                linear-gradient(to right, rgba(6, 182, 212, 0.02) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(6, 182, 212, 0.02) 1px, transparent 1px);
+                radial-gradient(circle at 2px 2px, rgba(255, 45, 117, 0.07) 1px, transparent 0),
+                linear-gradient(to right, rgba(255, 45, 117, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 45, 117, 0.03) 1px, transparent 1px);
             background-size: 40px 40px, 100px 100px, 100px 100px;
         }
 
         .glass-tech {
             background: var(--panel-bg);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(25px);
             border: 1px solid var(--border-glow);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.9);
         }
 
-        .cyber-border {
+        .cyber-border-pink {
             position: relative;
             overflow: hidden;
         }
-        .cyber-border::after {
+        .cyber-border-pink::after {
             content: '';
             position: absolute;
             top: 0; left: -100%;
@@ -64,50 +64,46 @@
             100% { left: 100%; }
         }
 
+        .active-nav-pink {
+            background: linear-gradient(135deg, var(--primary), #ec4899);
+            color: #fff !important;
+            box-shadow: 0 0 25px var(--primary-glow);
+        }
+
         .code-scroll::-webkit-scrollbar { width: 4px; }
         .code-scroll::-webkit-scrollbar-track { background: transparent; }
-        .code-scroll::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.2); border-radius: 10px; }
+        .code-scroll::-webkit-scrollbar-thumb { background: rgba(255, 45, 117, 0.2); border-radius: 10px; }
         .code-scroll::-webkit-scrollbar-thumb:hover { background: var(--primary); }
-
-        .active-nav {
-            background: linear-gradient(135deg, var(--primary), #3b82f6);
-            color: #000 !important;
-            box-shadow: 0 0 20px var(--primary-glow);
-        }
 
         .phone-frame-scale {
             transform: scale(0.9);
             transform-origin: center top;
         }
         @media (max-width: 768px) {
-            .phone-frame-scale {
-                transform: scale(0.85);
-            }
-        }
-        @media (max-width: 480px) {
-            .phone-frame-scale {
-                transform: scale(0.75);
-            }
+            .phone-frame-scale { transform: scale(0.85); }
         }
 
-        .neo-shadow {
-            box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
-        }
-
-        .shimmer-bg {
+        .shimmer-pink {
             background: linear-gradient(
                 90deg,
-                rgba(255, 255, 255, 0) 0%,
-                rgba(255, 255, 255, 0.05) 50%,
-                rgba(255, 255, 255, 0) 100%
+                rgba(255, 45, 117, 0) 0%,
+                rgba(255, 45, 117, 0.1) 50%,
+                rgba(255, 45, 117, 0) 100%
             );
             background-size: 200% 100%;
-            animation: shimmer 2s infinite linear;
+            animation: shimmer 3s infinite linear;
         }
 
         @keyframes shimmer {
             0% { background-position: -200% 0; }
             100% { background-position: 200% 0; }
+        }
+
+        #qrcode img {
+            display: block;
+            margin: auto;
+            border: 8px solid white;
+            border-radius: 12px;
         }
     </style>
 <script type="importmap">
