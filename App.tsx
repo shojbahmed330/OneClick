@@ -162,13 +162,14 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showCompletion, setShowCompletion] = useState(false);
   const [projectFiles, setProjectFiles] = useState<Record<string, string>>({
-    'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75;"><h1>System Online</h1></div>'
+    'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75;"><h1>OneClick Studio</h1></div>'
   });
   const [selectedFile, setSelectedFile] = useState('index.html');
   
   const [githubConfig, setGithubConfig] = useState<GithubConfig>({ token: '', repo: '', owner: '' });
-  const [buildStatus, setBuildStatus] = useState<{ status: 'idle' | 'pushing' | 'building' | 'success' | 'error', message: string, apkUrl?: string }>({ status: 'idle', message: '' });
+  const [buildStatus, setBuildStatus] = useState<{ status: 'idle' | 'pushing' | 'building' | 'success' | 'error', message: string, apkUrl?: string, webUrl?: string }>({ status: 'idle', message: '' });
   const [mobileTab, setMobileTab] = useState<'chat' | 'preview'>('chat');
   const [logoClicks, setLogoClicks] = useState(0);
   const [packages, setPackages] = useState<Package[]>([]);
@@ -217,7 +218,12 @@ const App: React.FC = () => {
     if (window.innerWidth < 768) setMobileTab('preview');
     try {
       const res = await gemini.current.generateWebsite(text, projectFiles, messages);
-      if (res.files) setProjectFiles(prev => ({ ...prev, ...res.files }));
+      if (res.files) {
+        setProjectFiles(prev => ({ ...prev, ...res.files }));
+        // Show project created toast
+        setShowCompletion(true);
+        setTimeout(() => setShowCompletion(false), 4000);
+      }
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: res.answer, timestamp: Date.now(), ...res }]);
       if (user) { const updated = await db.useToken(user.id, user.email); if (updated) setUser(updated); }
     } catch (e) { console.error(e); } finally { setIsGenerating(false); }
@@ -238,12 +244,12 @@ const App: React.FC = () => {
         const details = await github.current.getLatestApk(githubConfig);
         if (details) {
           clearInterval(checkInterval);
-          setBuildStatus({ status: 'success', message: 'APK Synthesized Successfully!', apkUrl: details.downloadUrl });
+          setBuildStatus({ status: 'success', message: 'APK Synthesized Successfully!', apkUrl: details.downloadUrl, webUrl: details.webUrl });
           setTimeout(() => {
             const qrContainer = document.getElementById('qrcode');
             if (qrContainer) {
               qrContainer.innerHTML = '';
-              new (window as any).QRCode(qrContainer, { text: details.downloadUrl, width: 180, height: 180, colorDark: "#ff2d75", colorLight: "#ffffff" });
+              new (window as any).QRCode(qrContainer, { text: details.webUrl, width: 180, height: 180, colorDark: "#ff2d75", colorLight: "#ffffff" });
             }
           }, 500);
         }
@@ -282,10 +288,20 @@ const App: React.FC = () => {
 
   return (
     <div className="h-[100dvh] flex flex-col text-slate-100 bg-[#0a0110] overflow-hidden">
+      {/* Toast Notification */}
+      {showCompletion && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-500">
+           <div className="bg-pink-600 text-white px-8 py-4 rounded-full shadow-[0_0_40px_rgba(255,45,117,0.6)] flex items-center gap-4 border border-white/20">
+              <div className="bg-white/20 p-2 rounded-full"><Sparkles className="animate-pulse" size={20}/></div>
+              <div className="text-sm font-black uppercase tracking-widest">Project Synced Successfully!</div>
+           </div>
+        </div>
+      )}
+
       <header className="h-16 md:h-20 border-b border-pink-500/10 glass-tech flex items-center justify-between px-4 md:px-8 z-50 relative cyber-border-pink">
         <div onClick={() => setLogoClicks(c => c + 1)} className="flex items-center gap-3 cursor-pointer select-none group">
           <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(255,45,117,0.5)] group-hover:scale-110 transition-transform"><Cpu size={20} className="text-white"/></div>
-          <span className="font-black text-sm uppercase tracking-tighter hidden sm:block">OneClick <span className="text-pink-400">Studio</span></span>
+          <span className="font-black text-sm uppercase tracking-tighter">OneClick <span className="text-pink-400">Studio</span></span>
         </div>
         <nav className="hidden lg:flex bg-black/40 rounded-xl p-1 border border-white/5 shadow-2xl">
           {[AppMode.PREVIEW, AppMode.EDIT, AppMode.SHOP, AppMode.PROFILE].map(m => (
@@ -294,19 +310,26 @@ const App: React.FC = () => {
         </nav>
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-full text-xs font-bold text-pink-400">{user.tokens} Tokens</div>
-          <button onClick={() => setMode(AppMode.SETTINGS)} className={`p-2 rounded-lg transition-all ${mode === AppMode.SETTINGS ? 'bg-pink-500 text-white' : 'text-slate-400 hover:bg-white/5'}`}><Settings size={20}/></button>
+          <button onClick={() => setMode(AppMode.SETTINGS)} className={`p-2 rounded-lg transition-all ${mode === AppMode.SETTINGS ? 'bg-pink-500 text-white' : 'text-slate-400 hover:bg-white/5'} hidden md:flex`}><Settings size={20}/></button>
           <button onClick={handleLogout} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg hidden sm:block"><LogOut size={20}/></button>
         </div>
       </header>
 
-      <main className="flex-1 flex overflow-hidden relative">
+      <main className="flex-1 flex overflow-hidden relative pb-20 md:pb-0">
         {mode === AppMode.PREVIEW ? (
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
             <section className={`w-full lg:w-[450px] border-r border-pink-500/10 flex flex-col bg-[#01040f]/50 backdrop-blur-xl h-full ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="flex-1 p-6 overflow-y-auto code-scroll space-y-6 pb-32">
                 {messages.length > 0 ? messages.map(m => (
                   <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2`}>
-                    <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.3)]' : 'bg-slate-900/80 border border-white/10 text-slate-100 shadow-xl'}`}>
+                    {m.role === 'assistant' && (
+                      <div className="flex items-center gap-2 mb-2 ml-2">
+                        <div className="w-5 h-5 bg-pink-600 rounded-lg flex items-center justify-center shadow-lg"><Sparkles size={10} className="text-white"/></div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-pink-500">Neural Assistant</span>
+                      </div>
+                    )}
+                    <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.3)]' : 'bg-slate-900/90 border border-pink-500/20 text-slate-100 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] relative overflow-hidden group'}`}>
+                      {m.role === 'assistant' && <div className="absolute inset-0 shimmer-pink opacity-5 group-hover:opacity-10 pointer-events-none"></div>}
                       {m.content}
                     </div>
                   </div>
@@ -314,6 +337,12 @@ const App: React.FC = () => {
                   <div className="h-full flex flex-col items-center justify-center text-center p-10 opacity-30">
                      <BrainCircuit size={64} className="mb-6 text-pink-400 animate-pulse"/>
                      <p className="text-xs font-black uppercase tracking-[0.4em]">Neural Core Online</p>
+                  </div>
+                )}
+                {isGenerating && (
+                  <div className="flex items-center gap-4 text-pink-400 p-4 animate-pulse">
+                     <Loader2 className="animate-spin" size={16}/>
+                     <span className="text-[10px] font-black uppercase tracking-widest">Synthesizing Core Data...</span>
                   </div>
                 )}
               </div>
@@ -334,20 +363,21 @@ const App: React.FC = () => {
                     <button className="text-slate-500"><Square size={14}/></button>
                  </div>
               </div>
-              <button onClick={() => { setMode(AppMode.EDIT); handleBuildAPK(); }} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30">
+              <button onClick={() => { setMode(AppMode.EDIT); handleBuildAPK(); }} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30 hidden lg:flex">
                 <Rocket size={18}/> Build Android APK
               </button>
-              <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 flex gap-2 z-[100]">
-                 <button onClick={() => setMobileTab('chat')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase ${mobileTab === 'chat' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Chat</button>
-                 <button onClick={() => setMobileTab('preview')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase ${mobileTab === 'preview' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Visual</button>
+              
+              {/* Mobile Chat/Preview Toggle - Moved up to not overlap bottom nav */}
+              <div className="lg:hidden fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 flex gap-1 z-[110]">
+                 <button onClick={() => setMobileTab('chat')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Chat</button>
+                 <button onClick={() => setMobileTab('preview')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Visual</button>
               </div>
             </section>
           </div>
         ) : mode === AppMode.EDIT ? (
           <div className="flex-1 flex overflow-hidden">
             {buildStatus.status === 'idle' ? (
-              <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                {/* File Explorer */}
+              <div className="flex-1 flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
                 <aside className="w-full md:w-64 border-r border-pink-500/10 bg-black/20 p-4 space-y-2 overflow-y-auto">
                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-500 mb-4 px-2">Project Files</h3>
                    {Object.keys(projectFiles).map(file => (
@@ -356,7 +386,6 @@ const App: React.FC = () => {
                      </button>
                    ))}
                 </aside>
-                {/* Code Editor */}
                 <main className="flex-1 bg-[#050108] p-4 overflow-hidden flex flex-col">
                    <div className="flex items-center justify-between mb-4 px-2">
                       <div className="flex items-center gap-2">
@@ -379,10 +408,15 @@ const App: React.FC = () => {
                  <div className="glass-tech w-full max-w-2xl p-10 md:p-16 rounded-[3rem] border-pink-500/20 text-center relative overflow-hidden">
                     <div className="shimmer-pink absolute inset-0 pointer-events-none opacity-20"></div>
                     {buildStatus.status === 'success' ? (
-                      <div className="space-y-8">
+                      <div className="space-y-8 animate-in zoom-in duration-500">
                          <div className="w-24 h-24 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)] animate-bounce"><CheckCircle2 size={48}/></div>
                          <h2 className="text-3xl md:text-4xl font-black text-white">APK Ready for Install</h2>
-                         <div id="qrcode" className="p-6 bg-white rounded-3xl inline-block shadow-2xl"></div>
+                         
+                         <div className="p-6 bg-white rounded-3xl inline-block shadow-2xl relative">
+                            <div id="qrcode" className="min-w-[180px] min-h-[180px]"></div>
+                            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-pink-600 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest text-white shadow-xl">Scan to View Page</div>
+                         </div>
+
                          <div className="flex flex-col sm:flex-row gap-4 justify-center">
                             <button 
                               onClick={handleSecureDownload}
@@ -394,7 +428,7 @@ const App: React.FC = () => {
                             </button>
                             <button onClick={() => setBuildStatus({status: 'idle', message: ''})} className="px-10 py-5 bg-white/5 border border-white/10 rounded-2xl font-black uppercase text-sm hover:bg-white/10 transition-all">Back to Editor</button>
                          </div>
-                         <p className="text-[10px] text-pink-400/50 uppercase tracking-widest italic">Note: Artifacts are zipped by GitHub</p>
+                         <p className="text-[10px] text-pink-400/50 uppercase tracking-widest italic">Scanning the code takes you to the GitHub build page for secure download.</p>
                       </div>
                     ) : (
                       <div className="space-y-8">
@@ -449,7 +483,6 @@ const App: React.FC = () => {
         ) : mode === AppMode.PROFILE ? (
           <div className="flex-1 p-6 md:p-10 overflow-y-auto scroll-smooth">
              <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-                {/* Profile Main Header Card */}
                 <div className="glass-tech p-8 md:p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative overflow-hidden">
                    <div className="absolute top-0 right-0 p-8">
                       {user.is_verified && <div className="flex items-center gap-2 px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-full text-[10px] font-black uppercase text-pink-400 tracking-widest"><ShieldCheck size={14}/> Verified Pro</div>}
@@ -469,7 +502,6 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
-                {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                    <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
                       <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
@@ -494,7 +526,6 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
-                {/* Bio & Details Card */}
                 <div className="glass-tech p-8 md:p-10 rounded-[3rem] border-pink-500/5 space-y-6">
                    <div className="flex items-center gap-3 mb-2">
                       <MessageSquare size={20} className="text-pink-500"/>
@@ -518,6 +549,25 @@ const App: React.FC = () => {
              </div>
           </div>
         ) : null}
+
+        {/* --- MOBILE BOTTOM NAVIGATION --- */}
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0a0110]/95 backdrop-blur-3xl border-t border-pink-500/10 flex items-center justify-around p-2 pb-6 z-[100] animate-in slide-in-from-bottom duration-300">
+          {[
+            { id: AppMode.PREVIEW, icon: LayoutDashboard, label: 'Preview' },
+            { id: AppMode.EDIT, icon: Code2, label: 'Edit' },
+            { id: AppMode.SHOP, icon: ShoppingCart, label: 'Shop' },
+            { id: AppMode.PROFILE, icon: UserIcon, label: 'Profile' }
+          ].map((item) => (
+            <button 
+              key={item.id} 
+              onClick={() => setMode(item.id)}
+              className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl transition-all active:scale-90 ${mode === item.id ? 'text-pink-500' : 'text-slate-500'}`}
+            >
+              <item.icon size={18} strokeWidth={mode === item.id ? 3 : 2} />
+              <span className="text-[9px] font-black uppercase tracking-tighter">{item.label}</span>
+            </button>
+          ))}
+        </div>
       </main>
     </div>
   );
