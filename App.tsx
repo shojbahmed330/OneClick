@@ -244,7 +244,7 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
       {/* --- Image Preview Modal --- */}
       {previewImage && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in zoom-in duration-300">
-           <button onClick={() => setPreviewImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-pink-600 rounded-full text-white transition-all"><X size={24}/></button>
+           <button onClick={() => setPreviewImage(null)} className="absolute top-8 right-8 p-3 bg-white/10 hover:bg-pink-600 rounded-full text-white transition-all z-[210]"><X size={24}/></button>
            <img src={previewImage} className="max-w-full max-h-full object-contain rounded-2xl shadow-[0_0_100px_rgba(255,45,117,0.4)]" />
         </div>
       )}
@@ -487,6 +487,12 @@ const App: React.FC = () => {
   const [packages, setPackages] = useState<Package[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   
+  // Password Change States
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [passError, setPassError] = useState('');
+  const [isUpdatingPass, setIsUpdatingPass] = useState(false);
+
   // Payment Flow States
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
   const [paymentStep, setPaymentStep] = useState<'methods' | 'form' | 'success' | 'idle'>('idle');
@@ -528,9 +534,37 @@ const App: React.FC = () => {
     if (savedGit) setGithubConfig(JSON.parse(savedGit));
   }, []);
 
-  useEffect(() => { if (logoClicks >= 3) { setMode(AppMode.SETTINGS); setLogoClicks(0); } }, [logoClicks]);
+  useEffect(() => { if (logoClicks >= 3) { setMode(AppMode.ADMIN); setLogoClicks(0); } }, [logoClicks]);
 
   const handleLogout = async () => { await db.signOut(); setUser(null); setIsScanned(false); };
+
+  const handlePasswordChange = async () => {
+    if (!oldPassword || !newPass) { setPassError('অনুগ্রহ করে সব ঘর পূরণ করুন'); return; }
+    setIsUpdatingPass(true);
+    setPassError('');
+    try {
+      // Supabase verification: Re-signing in with old password to verify
+      const { error: verifyError } = await db.supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: oldPassword
+      });
+
+      if (verifyError) {
+        setPassError('আপনার পুরাতন পাসওয়ার্ডটি সঠিক নয়। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        setIsUpdatingPass(false);
+        return;
+      }
+
+      await db.updatePassword(newPass);
+      alert("পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!");
+      setOldPassword('');
+      setNewPass('');
+    } catch (e: any) {
+      setPassError(e.message || "পাসওয়ার্ড পরিবর্তনে সমস্যা হয়েছে");
+    } finally {
+      setIsUpdatingPass(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isGenerating) return;
@@ -548,7 +582,7 @@ const App: React.FC = () => {
   };
 
   const handleBuildAPK = async () => {
-    if (!githubConfig.token || !githubConfig.repo) { alert("Please configure GitHub settings first!"); setMode(AppMode.SETTINGS); return; }
+    if (!githubConfig.token || !githubConfig.repo) { alert("GitHub কনফিগারেশন ইনভ্যালিড। লোগোতে ৩ বার ক্লিক করে সেটিংস চেক করুন।"); return; }
     setBuildStatus({ status: 'pushing', message: 'Uplinking code to GitHub...' });
     try {
       await github.current.pushToGithub(githubConfig, projectFiles);
@@ -588,15 +622,6 @@ const App: React.FC = () => {
     });
   };
 
-  const handlePaymentSubmit = async () => {
-    if (!selectedPkg || !paymentMethod || !paymentForm.trxId) { alert("Please fill the Transaction ID (TrxID)."); return; }
-    setPaymentSubmitting(true);
-    try {
-      const success = await db.submitPaymentRequest(user!.id, selectedPkg.id, selectedPkg.price, paymentMethod, paymentForm.trxId, paymentForm.screenshot, paymentForm.message);
-      if (success) setPaymentStep('success');
-    } catch (e: any) { alert("Submission failed: " + e.message); } finally { setPaymentSubmitting(false); }
-  };
-
   const handleAvatarUpload = () => {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
@@ -607,7 +632,7 @@ const App: React.FC = () => {
         const base64 = await fileToBase64(file);
         await db.updateUserAvatar(user.id, base64);
         setUser({ ...user, avatar_url: base64 });
-        alert("Profile photo updated!");
+        alert("প্রোফাইল ফটো আপডেট করা হয়েছে!");
       }
     };
     fileInput.click();
@@ -625,6 +650,34 @@ const App: React.FC = () => {
       }
     };
     fileInput.click();
+  };
+
+  // Fix: Implemented handlePaymentSubmit to fix the missing name error and handle the shop payment flow
+  const handlePaymentSubmit = async () => {
+    if (!selectedPkg || !paymentMethod || !paymentForm.trxId) {
+      alert("অনুগ্রহ করে সব ঘর পূরণ করুন এবং ট্রানজেকশন আইডি প্রদান করুন।");
+      return;
+    }
+    setPaymentSubmitting(true);
+    try {
+      const success = await db.submitPaymentRequest(
+        user!.id,
+        selectedPkg.id,
+        selectedPkg.price,
+        paymentMethod,
+        paymentForm.trxId,
+        paymentForm.screenshot,
+        paymentForm.message
+      );
+      if (success) {
+        setPaymentStep('success');
+        setPaymentForm({ trxId: '', screenshot: '', message: '' });
+      }
+    } catch (e: any) {
+      alert(e.message || "পেমেন্ট রিকোয়েস্ট সাবমিট করতে সমস্যা হয়েছে।");
+    } finally {
+      setPaymentSubmitting(false);
+    }
   };
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0a0110] text-[#ff2d75]"><Loader2 className="animate-spin" size={40}/></div>;
@@ -676,7 +729,6 @@ const App: React.FC = () => {
         </nav>
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-full text-xs font-bold text-pink-400">{user.tokens} Tokens</div>
-          <button onClick={() => setMode(AppMode.SETTINGS)} className={`p-2 rounded-lg transition-all ${mode === AppMode.SETTINGS ? 'bg-pink-500 text-white' : 'text-slate-400 hover:bg-white/5'} hidden md:flex`}><Settings size={20}/></button>
           <button onClick={handleLogout} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg hidden sm:block"><LogOut size={20}/></button>
         </div>
       </header>
@@ -825,7 +877,7 @@ const App: React.FC = () => {
           </div>
         ) : mode === AppMode.PROFILE ? (
           <div className="flex-1 p-10 overflow-y-auto scroll-smooth">
-             <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4">
+             <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 pb-20">
                 <div className="glass-tech p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative">
                    <div className="relative group cursor-pointer" onClick={handleAvatarUpload}>
                       <div className="w-40 h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl overflow-hidden bg-slate-800">
@@ -846,6 +898,7 @@ const App: React.FC = () => {
                       </div>
                    </div>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                    <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
                       <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
@@ -860,6 +913,28 @@ const App: React.FC = () => {
                       <div><div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">System Role</div><div className="text-xl font-bold text-white">{user.isAdmin ? 'Admin' : 'Developer'}</div></div>
                    </div>
                 </div>
+
+                <div className="glass-tech p-10 rounded-[3rem] border-white/5 space-y-8 shadow-xl">
+                   <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3"><Lock className="text-pink-500"/> Security <span className="text-pink-500">Settings</span></h3>
+                   <div className="space-y-6">
+                      <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase text-slate-500 ml-1">পুরাতন পাসওয়ার্ড</label>
+                         <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-pink-500/50" placeholder="••••••••" />
+                      </div>
+                      <div className="space-y-2">
+                         <label className="text-[10px] font-black uppercase text-slate-500 ml-1">নতুন পাসওয়ার্ড</label>
+                         <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-pink-500/50" placeholder="••••••••" />
+                      </div>
+                      {passError && <p className="text-xs text-red-500 font-bold bg-red-500/10 p-3 rounded-xl border border-red-500/20">{passError}</p>}
+                      <button disabled={isUpdatingPass} onClick={handlePasswordChange} className="w-full py-4 bg-pink-600 rounded-2xl font-black uppercase text-xs shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">
+                         {isUpdatingPass ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>} আপডেট করুন
+                      </button>
+                   </div>
+                </div>
+
+                <button onClick={handleLogout} className="w-full py-6 bg-red-600/10 border border-red-600/20 text-red-500 rounded-[2rem] font-black uppercase text-xs tracking-[0.2em] flex items-center justify-center gap-3 hover:bg-red-600 hover:text-white transition-all">
+                   <LogOut size={20}/> টার্মিনাল থেকে প্রস্থান করুন
+                </button>
              </div>
           </div>
         ) : mode === AppMode.EDIT ? (
@@ -911,20 +986,6 @@ const App: React.FC = () => {
                  </div>
               </div>
             )}
-          </div>
-        ) : mode === AppMode.SETTINGS ? (
-          <div className="flex-1 p-20 overflow-y-auto">
-             <div className="max-w-2xl mx-auto glass-tech p-16 rounded-[3rem] border-pink-500/20">
-                <div className="flex items-center gap-4 mb-10"><Github size={24} className="text-pink-500"/><h2 className="text-3xl font-black text-white">GitHub Config</h2></div>
-                <div className="space-y-6">
-                   <input type="password" value={githubConfig.token} onChange={e => setGithubConfig({...githubConfig, token: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-pink-400" placeholder="GitHub PAT" />
-                   <div className="grid grid-cols-2 gap-4">
-                      <input type="text" value={githubConfig.owner} onChange={e => setGithubConfig({...githubConfig, owner: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="Username" />
-                      <input type="text" value={githubConfig.repo} onChange={e => setGithubConfig({...githubConfig, repo: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="Repo Name" />
-                   </div>
-                   <button onClick={() => { localStorage.setItem('github_config', JSON.stringify(githubConfig)); alert("Saved!"); setMode(AppMode.PREVIEW); }} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl flex items-center justify-center gap-3"><Save size={20}/> Save Config</button>
-                </div>
-             </div>
           </div>
         ) : null}
 
