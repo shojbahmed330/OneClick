@@ -89,6 +89,12 @@ export class DatabaseService {
     }
   }
 
+  async updatePassword(newPassword: string) {
+    const { error } = await this.supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    return true;
+  }
+
   async getUser(email: string, id?: string): Promise<User | null> {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail && !id) return null;

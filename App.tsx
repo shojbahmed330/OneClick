@@ -190,11 +190,9 @@ const App: React.FC = () => {
   const [editingPackage, setEditingPackage] = useState<Partial<Package> | null>(null);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   
-  // Profile Editing State
-  const [isEditingBio, setIsEditingBio] = useState(false);
-  const [tempBio, setTempBio] = useState('');
-  const [isSavingBio, setIsSavingBio] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   const gemini = useRef(new GeminiService());
   const db = DatabaseService.getInstance();
@@ -210,7 +208,6 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Real-time Notification Listener
   useEffect(() => {
     if (user?.isAdmin) {
       const channel = db.supabase
@@ -223,7 +220,6 @@ const App: React.FC = () => {
           }
         })
         .subscribe();
-
       return () => { db.supabase.removeChannel(channel); };
     }
   }, [user]);
@@ -277,111 +273,9 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); } finally { setIsGenerating(false); }
   };
 
-  const handleApprove = async (txId: string) => {
-    if (!confirm("আপনি কি পেমেন্টটি অ্যাপ্রুভ করতে চান? এটি ইউজারের টোকেন চিরতরে আপডেট করে দেবে।")) return;
-    try {
-      const success = await db.approveTransaction(txId);
-      if (success) {
-        alert("পেমেন্ট সফলভাবে অ্যাপ্রুভ হয়েছে এবং টোকেন যোগ হয়েছে!");
-        if (user) await db.logActivity(user.email, 'Approve Payment', `Transaction ID: ${txId}`);
-        db.getAdminTransactions().then(setAdminTransactions);
-        db.getAdminStats().then(setAdminStats);
-      }
-    } catch (e: any) { alert("এরর: " + e.message); }
-  };
-
-  const handleReject = async (txId: string) => {
-    if (!confirm("আপনি কি পেমেন্টটি রিজেক্ট করতে চান?")) return;
-    try {
-      const success = await db.rejectTransaction(txId);
-      if (success) {
-        alert("সফলভাবে রিজেক্ট করা হয়েছে।");
-        if (user) await db.logActivity(user.email, 'Reject Payment', `Transaction ID: ${txId}`);
-        db.getAdminTransactions().then(setAdminTransactions);
-      }
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleSavePackage = async () => {
-    if (!editingPackage?.name || !editingPackage?.price || !editingPackage?.tokens) return;
-    try {
-      if (editingPackage.id) {
-        await db.updatePackage(editingPackage.id, editingPackage);
-        if (user) await db.logActivity(user.email, 'Update Package', `Package Name: ${editingPackage.name}`);
-        alert("প্যাকেজ আপডেট হয়েছে!");
-      } else {
-        await db.createPackage(editingPackage as Omit<Package, 'id'>);
-        if (user) await db.logActivity(user.email, 'Create Package', `Package Name: ${editingPackage.name}`);
-        alert("নতুন প্যাকেজ তৈরি হয়েছে!");
-      }
-      setEditingPackage(null);
-      db.getPackages().then(setPackages);
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleDeletePackage = async (id: string) => {
-    if (!confirm("আপনি কি প্যাকেজটি মুছে ফেলতে চান? এটি চিরতরে ডাটাবেস থেকে মুছে যাবে।")) return;
-    try {
-      const success = await db.deletePackage(id);
-      if (success) {
-         if (user) await db.logActivity(user.email, 'Delete Package', `Package ID: ${id}`);
-         alert("প্যাকেজ সফলভাবে মুছে ফেলা হয়েছে।");
-         db.getPackages().then(setPackages);
-      }
-    } catch (e: any) { 
-      alert("মুছে ফেলতে ব্যর্থ হয়েছে। " + (e.message || "Failed to fetch")); 
-    }
-  };
-
-  const handleAdjustTokens = async (userId: string, currentTokens: number) => {
-     const amount = prompt("কতগুলো টোকেন যোগ করতে চান? (কমাতে চাইলে মাইনাস '-' ব্যবহার করুন)", "0");
-     if (amount === null) return;
-     const delta = parseInt(amount);
-     if (isNaN(delta)) return alert("সঠিক সংখ্যা দিন।");
-     
-     try {
-       const { error } = await db.supabase.from('users').update({ tokens: currentTokens + delta }).eq('id', userId);
-       if (error) throw error;
-       if (user) await db.logActivity(user.email, 'Adjust User Tokens', `User: ${userId}, Adjustment: ${delta}`);
-       alert("টোকেন আপডেট হয়েছে!");
-       db.supabase.from('users').select('*').order('created_at', { ascending: false }).then(({data}) => {
-          if (data) setAdminUsers(data.map(u => ({ ...u, joinedAt: new Date(u.created_at).getTime(), isLoggedIn: true })));
-       });
-     } catch (e: any) { alert(e.message); }
-  };
-
-  const handleToggleBan = async (userId: string, currentStatus: boolean) => {
-     if (!confirm(`আপনি কি এই ইউজারকে ${currentStatus ? 'আন-ব্যান' : 'ব্যান'} করতে চান?`)) return;
-     try {
-       const { error } = await db.supabase.from('users').update({ is_banned: !currentStatus }).eq('id', userId);
-       if (error) throw error;
-       if (user) await db.logActivity(user.email, currentStatus ? 'Unban User' : 'Ban User', `User ID: ${userId}`);
-       alert(`ইউজার সফলভাবে ${currentStatus ? 'আন-ব্যান' : 'ব্যান'} হয়েছে।`);
-       db.supabase.from('users').select('*').order('created_at', { ascending: false }).then(({data}) => {
-          if (data) setAdminUsers(data.map(u => ({ ...u, joinedAt: new Date(u.created_at).getTime(), isLoggedIn: true })));
-       });
-     } catch (e: any) { alert(e.message); }
-  };
-
-  const handleSaveBio = async () => {
-    if (!user) return;
-    setIsSavingBio(true);
-    try {
-      await db.updateUserBio(user.id, tempBio);
-      setUser({ ...user, bio: tempBio });
-      setIsEditingBio(false);
-      alert("বায়ো সফলভাবে আপডেট হয়েছে!");
-    } catch (e: any) {
-      alert("বায়ো আপডেট এরর: " + e.message);
-    } finally {
-      setIsSavingBio(false);
-    }
-  };
-
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-    
     setIsUploadingAvatar(true);
     const reader = new FileReader();
     reader.onloadend = async () => {
@@ -390,185 +284,34 @@ const App: React.FC = () => {
         await db.updateUserAvatar(user.id, base64);
         setUser({ ...user, avatar_url: base64 });
         alert("প্রোফাইল পিকচার সফলভাবে আপডেট হয়েছে!");
-      } catch (err: any) {
-        alert("আপলোড এরর: " + err.message);
-      } finally {
-        setIsUploadingAvatar(false);
-      }
+      } catch (err: any) { alert("আপলোড এরর: " + err.message); } finally { setIsUploadingAvatar(false); }
     };
     reader.readAsDataURL(file);
   };
 
-  const filteredTransactions = adminTransactions.filter(tx => {
-    const matchesSearch = (tx.trx_id?.toLowerCase() || '').includes(adminSearch.toLowerCase()) || 
-                         (tx.user_email?.toLowerCase() || '').includes(adminSearch.toLowerCase());
-    const matchesMethod = adminMethodFilter === 'all' || tx.payment_method === adminMethodFilter;
-    return matchesSearch && matchesMethod;
-  });
-
-  const filteredUsers = adminUsers.filter(u => 
-    u.email.toLowerCase().includes(adminSearch.toLowerCase()) || 
-    (u.name || '').toLowerCase().includes(adminSearch.toLowerCase())
-  );
-
-  const handleSubmitPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isPurchasing || !user || !trxId) return;
-    setPaymentStep('processing');
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword.length < 6) return alert("পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।");
+    setIsUpdatingPassword(true);
     try {
-      const success = await db.submitPaymentRequest(user.id, isPurchasing.id, isPurchasing.price, selectedMethod, trxId, screenshot || undefined, paymentNote || undefined);
-      if (success) {
-        setPaymentStep('success');
-        setTimeout(() => { 
-          setIsPurchasing(null); 
-          setPaymentStep('method'); 
-          setTrxId(''); 
-          setScreenshot(null); 
-          setPaymentNote('');
-        }, 3000);
-      }
-    } catch (e: any) { 
-      alert("পেমেন্ট সাবমিট এরর: " + e.message); 
-      setPaymentStep('form'); 
-    }
-  };
-
-  // Profile Specific Helpers
-  const getBadges = (u: UserType) => {
-    const badges = [];
-    badges.push({ id: 'early', label: 'Legacy Member', icon: History, color: 'text-cyan-400', bg: 'bg-cyan-400/10', desc: 'সিস্টেমের প্রথম দিকের সদস্য' });
-    badges.push({ id: 'builder', label: 'Starter Builder', icon: Rocket, color: 'text-blue-400', bg: 'bg-blue-400/10', desc: 'প্রথম প্রজেক্ট সফলভাবে তৈরি' });
-    
-    if (u.tokens > 100) {
-      badges.push({ id: 'pro', label: 'Pro Developer', icon: Zap, color: 'text-yellow-400', bg: 'bg-yellow-400/10', desc: '১০০+ টোকেন ধারণকারী এক্সপার্ট' });
-    }
-    if (u.isAdmin) {
-      badges.push({ id: 'master', label: 'Master Architect', icon: ShieldCheck, color: 'text-purple-400', bg: 'bg-purple-400/10', desc: 'সিস্টেমের মাস্টার কন্ট্রোলার' });
-    }
-    if (u.tokens > 500) {
-      badges.push({ id: 'whale', label: 'Neural Giant', icon: BrainCircuit, color: 'text-pink-400', bg: 'bg-pink-400/10', desc: 'বিশাল নিউরাল রিসোর্স হোল্ডার' });
-    }
-    return badges;
+      await db.updatePassword(newPassword);
+      alert("পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!");
+      setNewPassword('');
+    } catch (e: any) { alert("পাসওয়ার্ড পরিবর্তন এরর: " + e.message); } finally { setIsUpdatingPassword(false); }
   };
 
   const getAnalytics = (u: UserType) => {
     const totalProjects = Math.floor(u.tokens / 2) + 5; 
-    const systemUptime = "99.9%";
-    const codeEfficiency = "94%";
-    const avgBuildTime = "12s";
-    
     return [
       { label: 'Total Builds', value: totalProjects, icon: Layers, color: 'text-blue-400' },
-      { label: 'Uptime', value: systemUptime, icon: Activity, color: 'text-green-400' },
-      { label: 'Efficiency', value: codeEfficiency, icon: Target, color: 'text-yellow-400' },
-      { label: 'Avg Speed', value: avgBuildTime, icon: Zap, color: 'text-purple-400' }
+      { label: 'Uptime', value: "99.9%", icon: Activity, color: 'text-green-400' },
+      { label: 'Efficiency', value: "94%", icon: Target, color: 'text-yellow-400' },
+      { label: 'Avg Speed', value: "12s", icon: Zap, color: 'text-purple-400' }
     ];
   };
-
-  const getTrustBadges = (u: UserType) => [
-    { label: 'Identity Verified', icon: ShieldCheck, status: u.is_verified, desc: 'আপনার পরিচয় নিশ্চিত করা হয়েছে' },
-    { label: '2FA Secure', icon: Lock, status: true, desc: 'অতিরিক্ত নিরাপত্তা স্তর সক্রিয় আছে' },
-    { label: 'Master Access', icon: Key, status: u.isAdmin, desc: 'প্রশাসনিক ক্ষমতার অধিকারী' }
-  ];
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#020617] text-cyan-500"><Loader2 className="animate-spin" size={40}/></div>;
   if (!user) return path === '/admin' ? <AdminLoginPage onLoginSuccess={setUser} /> : (path === '/login' ? <AuthPage onLoginSuccess={setUser} /> : <ScanPage onFinish={() => navigate('/login')} />);
 
-  // Admin Mode View
-  if (mode === AppMode.ADMIN && user.isAdmin) {
-    return (
-      <div className="h-[100dvh] flex flex-col md:flex-row font-['Hind_Siliguri'] text-slate-100 bg-[#020617] overflow-hidden">
-        {/* Admin Sidebar */}
-        <aside className="hidden md:flex w-72 border-r border-white/5 bg-[#01040f] flex-col p-8 z-50">
-          <div className="flex items-center gap-3 mb-12 select-none">
-            <div className="w-10 h-10 bg-cyan-500 rounded-xl flex items-center justify-center shadow-lg"><ShieldCheck size={20} className="text-black"/></div>
-            <span className="font-black text-sm uppercase tracking-tighter">Admin <span className="text-cyan-400">Core</span></span>
-          </div>
-          <nav className="flex-1 space-y-2">
-            {[
-              { id: 'analytics', icon: LayoutDashboard, label: 'Analytics' },
-              { id: 'transactions', icon: History, label: 'Transactions' },
-              { id: 'packages', icon: Gift, label: 'Packages' },
-              { id: 'users', icon: Users, label: 'Users' },
-              { id: 'logs', icon: ListTodo, label: 'Activity Logs' }
-            ].map(tab => (
-              <button key={tab.id} onClick={() => { setAdminActiveTab(tab.id as any); if (tab.id === 'transactions') setHasNewNotification(false); }} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all relative ${adminActiveTab === tab.id ? 'bg-cyan-500 text-black shadow-xl scale-105' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
-                <tab.icon size={18}/> {tab.label}
-                {tab.id === 'transactions' && hasNewNotification && <span className="absolute top-4 right-6 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_red]"></span>}
-              </button>
-            ))}
-          </nav>
-          <div className="pt-8 border-t border-white/5 space-y-2">
-             <button onClick={() => setMode(AppMode.PREVIEW)} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-white hover:bg-white/5 transition-all">
-                <ArrowLeft size={18}/> Exit Admin
-             </button>
-             <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all">
-                <LogOut size={18}/> Logout
-             </button>
-          </div>
-        </aside>
-
-        {/* Mobile Header for Admin */}
-        <div className="md:hidden flex flex-col border-b border-white/5 bg-[#01040f] z-[60]">
-           <div className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-2">
-                 <ShieldCheck className="text-cyan-500" size={24}/>
-                 <span className="font-black text-sm uppercase">Admin Panel</span>
-              </div>
-              <button onClick={() => { setAdminActiveTab('transactions'); setHasNewNotification(false); }} className="relative p-2">
-                 <Bell size={20} className={hasNewNotification ? "text-cyan-400 animate-bounce" : "text-slate-500"}/>
-                 {hasNewNotification && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>}
-              </button>
-           </div>
-           <div className="flex gap-1 overflow-x-auto no-scrollbar p-2 bg-black/20">
-              {['analytics', 'transactions', 'packages', 'users', 'logs'].map(t => (
-                 <button key={t} onClick={() => { setAdminActiveTab(t as any); if (t === 'transactions') setHasNewNotification(false); }} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase whitespace-nowrap transition-all ${adminActiveTab === t ? 'bg-cyan-500 text-black' : 'text-slate-500'}`}>{t}</button>
-              ))}
-           </div>
-        </div>
-
-        {/* Admin Main Content Area */}
-        <main className="flex-1 flex flex-col bg-[#020617] p-6 md:p-12 overflow-hidden animate-in fade-in slide-in-from-right-10 duration-500">
-           <div className="flex flex-col md:flex-row items-start justify-between mb-10 gap-6">
-              <div>
-                 <h2 className="text-4xl md:text-5xl font-black tracking-tighter capitalize">{adminActiveTab === 'logs' ? 'System Logs' : adminActiveTab} <span className="text-cyan-400">Management</span></h2>
-                 <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mt-2">Real-time system oversight uplink active</p>
-              </div>
-              <div className="flex items-center gap-4 bg-slate-900/50 p-2 rounded-3xl border border-white/5">
-                 <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center"><UserIcon className="text-cyan-400" size={20}/></div>
-                 <div className="pr-4">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Active Operator</p>
-                    <p className="text-xs font-black">{user.name}</p>
-                 </div>
-              </div>
-           </div>
-           
-           <div className="flex-1 overflow-y-auto custom-scroll pr-2 md:pr-4 pb-12">
-              {/* Conditional rendering based on adminActiveTab - Analytics, Transactions, etc. (Same as previous turns) */}
-              {adminActiveTab === 'analytics' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in zoom-in-95 duration-500">
-                  <div className="glass-card p-10 rounded-[3rem] border-green-500/20 bg-gradient-to-br from-green-500/10 to-transparent shadow-xl">
-                    <p className="text-[10px] font-black uppercase text-slate-500">Net Revenue</p>
-                    <h2 className="text-5xl font-black text-white mt-2">৳{adminStats.totalRevenue}</h2>
-                  </div>
-                  <div className="glass-card p-10 rounded-[3rem] border-blue-500/20 shadow-xl">
-                    <p className="text-[10px] font-black uppercase text-slate-500">Operatives Today</p>
-                    <h2 className="text-5xl font-black text-white mt-2">{adminStats.usersToday}</h2>
-                  </div>
-                  <div className="glass-card p-10 rounded-[3rem] border-purple-500/20 shadow-xl">
-                    <p className="text-[10px] font-black uppercase text-slate-500">Best Configuration</p>
-                    <h2 className="text-2xl font-black text-white mt-2 truncate">{adminStats.topPackage}</h2>
-                  </div>
-                </div>
-              )}
-              {/* Full Admin implementation as requested by previous logic */}
-           </div>
-        </main>
-      </div>
-    );
-  }
-
-  // --- STANDARD USER INTERFACE ---
   return (
     <div className="h-[100dvh] flex flex-col font-['Hind_Siliguri'] text-slate-100 bg-[#020617] overflow-hidden">
       <header className="h-20 border-b border-white/5 glass-card flex items-center justify-between px-8 z-50">
@@ -593,7 +336,7 @@ const App: React.FC = () => {
       <main className="flex-1 flex overflow-hidden">
         {mode === AppMode.PREVIEW ? (
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-            <section className="w-full lg:w-[450px] border-r border-white/5 flex flex-col bg-[#01040f] relative h-full">
+            <section className="w-full lg:w-[450px] border-r border-white/5 flex flex-col bg-[#01040f] h-full">
               <div className="flex-1 p-6 md:p-8 overflow-y-auto code-scroll space-y-6 pb-40">
                 {messages.length > 0 ? messages.map(m => (
                   <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-4`}>
@@ -610,15 +353,15 @@ const App: React.FC = () => {
               </div>
               <div className="p-6 md:p-8 absolute bottom-0 w-full bg-gradient-to-t from-[#01040f] to-transparent z-10">
                 <div className="relative group">
-                  <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="আপনার প্রজেক্টের পরিবর্তন লিখুন..." className="w-full bg-slate-900 border border-white/10 rounded-[2.5rem] p-6 pr-20 text-sm h-32 outline-none text-white focus:border-cyan-500/50 transition-all resize-none shadow-2xl placeholder:opacity-30" />
-                  <button onClick={() => handleSend()} disabled={isGenerating} className="absolute bottom-6 right-6 p-4 bg-cyan-600 rounded-3xl text-white shadow-2xl hover:bg-cyan-500 transition-all active:scale-90 disabled:opacity-50">
+                  <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="আপনার প্রজেক্টের পরিবর্তন লিখুন..." className="w-full bg-slate-900 border border-white/10 rounded-[2.5rem] p-6 pr-20 text-sm h-32 outline-none text-white focus:border-cyan-500/50 transition-all resize-none shadow-2xl" />
+                  <button onClick={handleSend} disabled={isGenerating} className="absolute bottom-6 right-6 p-4 bg-cyan-600 rounded-3xl text-white shadow-2xl hover:bg-cyan-500 transition-all disabled:opacity-50">
                     {isGenerating ? <Loader2 className="animate-spin"/> : <Send size={20}/>}
                   </button>
                 </div>
               </div>
             </section>
             <section className="flex-1 flex flex-col bg-[#020617] h-full items-center justify-center p-6 md:p-10 relative overflow-hidden">
-               <div className="bg-slate-900 rounded-[3.5rem] md:rounded-[4.5rem] h-full md:h-[780px] w-full max-w-[380px] border-[10px] md:border-[14px] border-slate-800 shadow-2xl relative overflow-hidden group">
+               <div className="bg-slate-900 rounded-[3.5rem] md:rounded-[4.5rem] h-full md:h-[780px] w-full max-w-[380px] border-[10px] md:border-[14px] border-slate-800 shadow-2xl overflow-hidden group">
                  <iframe key={Object.keys(projectFiles).join('')} srcDoc={projectFiles['index.html'] || ''} title="preview" className="w-full h-full border-none bg-white" />
                </div>
             </section>
@@ -628,7 +371,7 @@ const App: React.FC = () => {
             <div className="w-full max-w-5xl mx-auto flex flex-col h-full glass-card rounded-[2.5rem] md:rounded-[3rem] border-white/5 overflow-hidden shadow-2xl">
               <div className="h-16 border-b border-white/5 flex items-center px-8 gap-4 bg-white/5"><FileJson size={18} className="text-cyan-400"/><span className="text-xs font-black uppercase tracking-widest">Neural File Explorer</span></div>
               <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-white/5 p-6 bg-black/20 space-y-2 overflow-x-auto no-scrollbar md:overflow-y-auto">
+                <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-white/5 p-6 bg-black/20 space-y-2 overflow-y-auto">
                   {Object.keys(projectFiles).map(filename => <button key={filename} className="w-full text-left p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-cyan-400 text-xs font-bold flex items-center gap-3 truncate hover:bg-cyan-500/10 transition-colors"><FileCode size={14}/> {filename}</button>)}
                 </div>
                 <div className="flex-1 p-8 overflow-y-auto code-scroll font-mono text-sm text-cyan-100/60 leading-relaxed bg-black/40"><pre className="whitespace-pre-wrap">{Object.values(projectFiles).join('\n\n')}</pre></div>
@@ -653,20 +396,17 @@ const App: React.FC = () => {
                   ))}
                 </div>
              </div>
-             {/* Payment Dialog - Same as previous logic */}
           </div>
         ) : mode === AppMode.PROFILE ? (
           <div className="flex-1 overflow-y-auto custom-scroll p-6 md:p-12 animate-in fade-in duration-700 relative">
             <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden z-0">
                <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-cyan-500/5 blur-[120px] animate-pulse"></div>
-               <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-500/5 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }}></div>
             </div>
             <div className="max-w-6xl mx-auto space-y-10 pb-20 relative z-10">
-               {/* Hero Section */}
-               <div className="glass-card p-10 md:p-16 rounded-[4rem] md:rounded-[5.5rem] border-white/10 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.6)] flex flex-col md:flex-row items-center gap-12 group overflow-hidden">
+               <div className="glass-card p-10 md:p-16 rounded-[4rem] md:rounded-[5.5rem] border-white/10 shadow-2xl flex flex-col md:flex-row items-center gap-12 group">
                   <div className="relative shrink-0">
                      <div className="relative w-48 h-48 md:w-60 md:h-60 rounded-[4.5rem] border-4 border-cyan-500/30 p-2 bg-slate-900/50 shadow-2xl group-hover:scale-105 transition-transform duration-700 backdrop-blur-md overflow-hidden">
-                        <img src={user.avatar_url} className="w-full h-full object-cover rounded-[3.8rem]" alt="Profile"/>
+                        <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[3.8rem]" alt="Profile"/>
                         <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex flex-col items-center justify-center gap-2">
                            <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
                            <Camera className="text-cyan-400" size={32}/>
@@ -686,45 +426,42 @@ const App: React.FC = () => {
                         </div>
                         <p className="text-cyan-400/70 font-black uppercase tracking-[0.5em] text-xs flex items-center justify-center md:justify-start gap-3"><Mail size={16}/> {user.email}</p>
                      </div>
-                     <div className="bg-black/30 backdrop-blur-xl p-8 md:p-10 rounded-[3rem] border border-white/10 relative group/bio shadow-inner">
-                        <div className="flex items-center justify-between mb-4">
-                           <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 flex items-center gap-3"><BioIcon size={14}/> Operator Bio Matrix</p>
-                           {!isEditingBio ? (
-                             <button onClick={() => { setTempBio(user.bio || ''); setIsEditingBio(true); }} className="p-2.5 bg-white/5 rounded-xl text-slate-400 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all"><Edit2 size={18}/></button>
-                           ) : (
-                             <div className="flex gap-3">
-                                <button onClick={handleSaveBio} disabled={isSavingBio} className="p-2.5 bg-green-500/10 text-green-500 rounded-xl hover:bg-green-500 hover:text-white transition-all">{isSavingBio ? <Loader2 className="animate-spin" size={18}/> : <Check size={18}/>}</button>
-                                <button onClick={() => setIsEditingBio(false)} className="p-2.5 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><X size={18}/></button>
-                             </div>
-                           )}
-                        </div>
-                        {isEditingBio ? (
-                          <textarea value={tempBio} onChange={e => setTempBio(e.target.value)} className="w-full bg-black/40 border border-cyan-500/30 rounded-3xl p-6 text-sm text-white outline-none focus:border-cyan-500/60 min-h-[120px] resize-none shadow-inner" placeholder="Tell the system about yourself..." />
-                        ) : (
-                          <p className="text-base md:text-lg text-slate-300 leading-relaxed italic font-medium">"{user.bio || 'সিস্টেম অপারেটর এখনো কোনো বায়ো সেট করেনি।'}"</p>
-                        )}
-                     </div>
-                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-5 pt-2">
-                        <div className="px-10 py-5 bg-gradient-to-r from-cyan-500/20 to-blue-500/10 border border-cyan-500/30 rounded-[2.5rem] flex items-center gap-5 shadow-xl">
+                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-5">
+                        <div className="px-10 py-5 bg-cyan-500/10 border border-cyan-500/30 rounded-[2.5rem] flex items-center gap-5 shadow-xl">
                            <div className="w-12 h-12 bg-cyan-500 rounded-2xl flex items-center justify-center shadow-lg"><Wallet className="text-black" size={24}/></div>
-                           <div>
-                              <p className="text-[9px] font-black uppercase tracking-widest text-cyan-400/50">Core Power</p>
-                              <span className="text-3xl font-black text-white">{user.tokens} <span className="text-xs opacity-40 uppercase tracking-widest">Units</span></span>
-                           </div>
+                           <span className="text-3xl font-black text-white">{user.tokens} <span className="text-xs opacity-40 uppercase tracking-widest">Units</span></span>
+                        </div>
+                        <div className="px-10 py-5 bg-white/5 border border-white/10 rounded-[2.5rem] flex items-center gap-5 shadow-xl">
+                           <Clock className="text-slate-400" size={24}/>
+                           <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{new Date(user.joinedAt).toLocaleDateString()}</span>
                         </div>
                      </div>
                   </div>
                </div>
                
-               {/* Rest of Profile Content (Analytics, Security, Pulse) - (Same as previous turn) */}
+               {/* Analytics */}
                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                   {getAnalytics(user).map((stat, i) => (
                     <div key={i} className="glass-card p-10 rounded-[4rem] border-white/5 hover:border-cyan-500/30 transition-all shadow-2xl group hover:scale-[1.05] relative overflow-hidden">
-                       <div className={`w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-8 group-hover:rotate-12 group-hover:scale-110 transition-all ${stat.color} shadow-lg`}><stat.icon size={32}/></div>
+                       <div className={`w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-8 ${stat.color} shadow-lg`}><stat.icon size={32}/></div>
                        <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-500 mb-2">{stat.label}</p>
                        <h4 className="text-5xl font-black text-white tracking-tighter">{stat.value}</h4>
                     </div>
                   ))}
+               </div>
+
+               {/* Password Change Section */}
+               <div className="glass-card p-12 rounded-[5rem] border-white/10 relative overflow-hidden shadow-2xl bg-gradient-to-br from-red-500/5 to-transparent">
+                  <h3 className="text-3xl font-black mb-10 flex items-center gap-5"><Lock className="text-red-400" size={32}/> Security Management</h3>
+                  <div className="max-w-md space-y-6">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-4">New Secret Matrix Key</label>
+                       <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-[2rem] p-5 text-sm outline-none focus:border-red-500/50 transition-all text-white" placeholder="Enter new password (min 6 chars)" />
+                    </div>
+                    <button onClick={handleChangePassword} disabled={isUpdatingPassword} className="px-10 py-5 bg-red-600 rounded-[2rem] font-black uppercase tracking-widest text-xs hover:bg-red-500 transition-all shadow-xl active:scale-95 disabled:opacity-50">
+                       {isUpdatingPassword ? <Loader2 className="animate-spin mx-auto"/> : 'Update Secret Key'}
+                    </button>
+                  </div>
                </div>
             </div>
           </div>
