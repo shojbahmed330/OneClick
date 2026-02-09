@@ -103,7 +103,9 @@ export class DatabaseService {
           tokens: 999,
           isLoggedIn: true,
           joinedAt: Date.now(),
-          isAdmin: true
+          isAdmin: true,
+          is_verified: true,
+          bio: 'Master Architect & System Lead of OneClick Studio.'
         };
       }
 
@@ -122,16 +124,30 @@ export class DatabaseService {
         id: userRecord.id,
         email: userRecord.email,
         name: userRecord.name || userRecord.email.split('@')[0],
-        avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userRecord.email}`,
+        avatar_url: userRecord.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userRecord.email}`,
         tokens: userRecord.tokens ?? 0,
         isLoggedIn: true,
         joinedAt: new Date(userRecord.created_at || Date.now()).getTime(),
         isAdmin: isAdminEmail,
-        is_banned: userRecord.is_banned
+        is_banned: userRecord.is_banned,
+        bio: userRecord.bio || '',
+        is_verified: userRecord.is_verified || false
       };
     } catch (e) {
       return null;
     }
+  }
+
+  async updateUserBio(userId: string, bio: string) {
+    const { error } = await this.supabase.from('users').update({ bio }).eq('id', userId);
+    if (error) throw error;
+    return true;
+  }
+
+  async updateUserAvatar(userId: string, avatarUrl: string) {
+    const { error } = await this.supabase.from('users').update({ avatar_url: avatarUrl }).eq('id', userId);
+    if (error) throw error;
+    return true;
   }
 
   async getPackages(): Promise<Package[]> {

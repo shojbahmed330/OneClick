@@ -72,4 +72,6 @@ export interface User {
   joinedAt: number;
   isAdmin?: boolean;
   is_banned?: boolean;
+  bio?: string;
+  is_verified?: boolean;
 }
