@@ -7,9 +7,9 @@ import {
   ChevronRight, Github, Save, Trash2, Square, Circle, RefreshCw, Fingerprint,
   User, Lock, Eye, EyeOff, MessageSquare, Monitor, CreditCard, Upload, X, ShieldCheck,
   FileJson, Layout, Users, BarChart3, Clock, Wallet, CheckCircle2, XCircle, Search, TrendingUp,
-  Plus, Edit2, Ban, ShieldX, LayoutDashboard, History, Gift, Filter, MoreVertical
+  Plus, Edit2, Ban, ShieldX, LayoutDashboard, History, Gift, Filter, Bell, ListTodo
 } from 'lucide-react';
-import { AppMode, ChatMessage, User as UserType, GithubConfig, Package, Transaction } from './types';
+import { AppMode, ChatMessage, User as UserType, GithubConfig, Package, Transaction, ActivityLog } from './types';
 import { GeminiService } from './services/geminiService';
 import { DatabaseService } from './services/dbService';
 import { GithubService } from './services/githubService';
@@ -179,15 +179,18 @@ const App: React.FC = () => {
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [adminTransactions, setAdminTransactions] = useState<Transaction[]>([]);
   const [adminUsers, setAdminUsers] = useState<UserType[]>([]);
-  const [adminActiveTab, setAdminActiveTab] = useState<'analytics' | 'transactions' | 'packages' | 'users'>('analytics');
+  const [adminActivityLogs, setAdminActivityLogs] = useState<ActivityLog[]>([]);
+  const [adminActiveTab, setAdminActiveTab] = useState<'analytics' | 'transactions' | 'packages' | 'users' | 'logs'>('analytics');
   const [viewingScreenshot, setViewingScreenshot] = useState<string | null>(null);
   const [adminStats, setAdminStats] = useState({ totalRevenue: 0, usersToday: 0, topPackage: 'Loading...', salesCount: 0 });
   const [adminSearch, setAdminSearch] = useState('');
   const [adminMethodFilter, setAdminMethodFilter] = useState('all');
   const [editingPackage, setEditingPackage] = useState<Partial<Package> | null>(null);
+  const [hasNewNotification, setHasNewNotification] = useState(false);
 
   const gemini = useRef(new GeminiService());
   const db = DatabaseService.getInstance();
+  const notificationSound = useRef(new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'));
 
   useEffect(() => {
     db.getCurrentSession().then(async session => {
@@ -198,6 +201,24 @@ const App: React.FC = () => {
       setAuthLoading(false);
     });
   }, []);
+
+  // Real-time Notification Listener
+  useEffect(() => {
+    if (user?.isAdmin) {
+      const channel = db.supabase
+        .channel('admin-notifications')
+        .on('postgres_changes', { event: 'INSERT', table: 'transactions' }, (payload) => {
+          if (payload.new.status === 'pending') {
+            setHasNewNotification(true);
+            notificationSound.current.play().catch(e => console.log("Sound error:", e));
+            db.getAdminTransactions().then(setAdminTransactions);
+          }
+        })
+        .subscribe();
+
+      return () => { db.supabase.removeChannel(channel); };
+    }
+  }, [user]);
 
   useEffect(() => {
     if (logoClicks >= 3) { setMode(AppMode.SETTINGS); setLogoClicks(0); }
@@ -214,20 +235,10 @@ const App: React.FC = () => {
     if (mode === AppMode.ADMIN && user?.isAdmin) {
       db.getAdminTransactions().then(setAdminTransactions);
       db.getAdminStats().then(setAdminStats);
+      if (adminActiveTab === 'logs') db.getActivityLogs().then(setAdminActivityLogs);
       if (adminActiveTab === 'users') {
         db.supabase.from('users').select('*').order('created_at', { ascending: false }).then(({data}) => {
-          if (data) {
-             const mappedUsers: UserType[] = data.map(u => ({
-               id: u.id,
-               email: u.email,
-               name: u.name,
-               tokens: u.tokens || 0,
-               isLoggedIn: true,
-               joinedAt: new Date(u.created_at).getTime(),
-               is_banned: u.is_banned
-             }));
-             setAdminUsers(mappedUsers);
-          }
+          if (data) setAdminUsers(data.map(u => ({ ...u, joinedAt: new Date(u.created_at).getTime(), isLoggedIn: true })));
         });
       }
     }
@@ -264,6 +275,7 @@ const App: React.FC = () => {
       const success = await db.approveTransaction(txId);
       if (success) {
         alert("পেমেন্ট সফলভাবে অ্যাপ্রুভ হয়েছে এবং টোকেন যোগ হয়েছে!");
+        if (user) await db.logActivity(user.email, 'Approve Payment', `Transaction ID: ${txId}`);
         db.getAdminTransactions().then(setAdminTransactions);
         db.getAdminStats().then(setAdminStats);
       }
@@ -276,6 +288,7 @@ const App: React.FC = () => {
       const success = await db.rejectTransaction(txId);
       if (success) {
         alert("সফলভাবে রিজেক্ট করা হয়েছে।");
+        if (user) await db.logActivity(user.email, 'Reject Payment', `Transaction ID: ${txId}`);
         db.getAdminTransactions().then(setAdminTransactions);
       }
     } catch (e: any) { alert(e.message); }
@@ -286,9 +299,11 @@ const App: React.FC = () => {
     try {
       if (editingPackage.id) {
         await db.updatePackage(editingPackage.id, editingPackage);
+        if (user) await db.logActivity(user.email, 'Update Package', `Package Name: ${editingPackage.name}`);
         alert("প্যাকেজ আপডেট হয়েছে!");
       } else {
         await db.createPackage(editingPackage as Omit<Package, 'id'>);
+        if (user) await db.logActivity(user.email, 'Create Package', `Package Name: ${editingPackage.name}`);
         alert("নতুন প্যাকেজ তৈরি হয়েছে!");
       }
       setEditingPackage(null);
@@ -301,12 +316,12 @@ const App: React.FC = () => {
     try {
       const success = await db.deletePackage(id);
       if (success) {
+         if (user) await db.logActivity(user.email, 'Delete Package', `Package ID: ${id}`);
          alert("প্যাকেজ সফলভাবে মুছে ফেলা হয়েছে।");
          db.getPackages().then(setPackages);
       }
     } catch (e: any) { 
-      console.error("Delete Error:", e);
-      alert("মুছে ফেলতে ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন। " + (e.message || "Failed to fetch")); 
+      alert("মুছে ফেলতে ব্যর্থ হয়েছে। " + (e.message || "Failed to fetch")); 
     }
   };
 
@@ -319,9 +334,8 @@ const App: React.FC = () => {
      try {
        const { error } = await db.supabase.from('users').update({ tokens: currentTokens + delta }).eq('id', userId);
        if (error) throw error;
+       if (user) await db.logActivity(user.email, 'Adjust User Tokens', `User: ${userId}, Adjustment: ${delta}`);
        alert("টোকেন আপডেট হয়েছে!");
-       db.getAdminStats().then(setAdminStats);
-       // Refresh users list
        db.supabase.from('users').select('*').order('created_at', { ascending: false }).then(({data}) => {
           if (data) setAdminUsers(data.map(u => ({ ...u, joinedAt: new Date(u.created_at).getTime(), isLoggedIn: true })));
        });
@@ -333,8 +347,8 @@ const App: React.FC = () => {
      try {
        const { error } = await db.supabase.from('users').update({ is_banned: !currentStatus }).eq('id', userId);
        if (error) throw error;
+       if (user) await db.logActivity(user.email, currentStatus ? 'Unban User' : 'Ban User', `User ID: ${userId}`);
        alert(`ইউজার সফলভাবে ${currentStatus ? 'আন-ব্যান' : 'ব্যান'} হয়েছে।`);
-       // Refresh users list
        db.supabase.from('users').select('*').order('created_at', { ascending: false }).then(({data}) => {
           if (data) setAdminUsers(data.map(u => ({ ...u, joinedAt: new Date(u.created_at).getTime(), isLoggedIn: true })));
        });
@@ -378,8 +392,6 @@ const App: React.FC = () => {
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#020617] text-cyan-500"><Loader2 className="animate-spin" size={40}/></div>;
   if (!user) return path === '/admin' ? <AdminLoginPage onLoginSuccess={setUser} /> : (path === '/login' ? <AuthPage onLoginSuccess={setUser} /> : <ScanPage onFinish={() => navigate('/login')} />);
 
-  // --- RENDERING LOGIC ---
-
   // Admin Mode is a dedicated full-page dashboard
   if (mode === AppMode.ADMIN && user.isAdmin) {
     return (
@@ -396,10 +408,12 @@ const App: React.FC = () => {
               { id: 'analytics', icon: LayoutDashboard, label: 'Analytics' },
               { id: 'transactions', icon: History, label: 'Transactions' },
               { id: 'packages', icon: Gift, label: 'Packages' },
-              { id: 'users', icon: Users, label: 'Users' }
+              { id: 'users', icon: Users, label: 'Users' },
+              { id: 'logs', icon: ListTodo, label: 'Activity Logs' }
             ].map(tab => (
-              <button key={tab.id} onClick={() => setAdminActiveTab(tab.id as any)} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${adminActiveTab === tab.id ? 'bg-cyan-500 text-black shadow-xl scale-105' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
+              <button key={tab.id} onClick={() => { setAdminActiveTab(tab.id as any); if (tab.id === 'transactions') setHasNewNotification(false); }} className={`w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all relative ${adminActiveTab === tab.id ? 'bg-cyan-500 text-black shadow-xl scale-105' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
                 <tab.icon size={18}/> {tab.label}
+                {tab.id === 'transactions' && hasNewNotification && <span className="absolute top-4 right-6 w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_red]"></span>}
               </button>
             ))}
           </nav>
@@ -415,24 +429,29 @@ const App: React.FC = () => {
         </aside>
 
         {/* Admin Mobile Nav */}
-        <div className="md:hidden flex items-center justify-between p-6 border-b border-white/5 bg-[#01040f] z-[60]">
-           <div className="flex items-center gap-2">
-              <ShieldCheck className="text-cyan-500" size={24}/>
-              <span className="font-black text-sm uppercase">Admin Panel</span>
+        <div className="md:hidden flex flex-col border-b border-white/5 bg-[#01040f] z-[60]">
+           <div className="flex items-center justify-between p-4">
+              <div className="flex items-center gap-2">
+                 <ShieldCheck className="text-cyan-500" size={24}/>
+                 <span className="font-black text-sm uppercase">Admin Panel</span>
+              </div>
+              <button onClick={() => { setAdminActiveTab('transactions'); setHasNewNotification(false); }} className="relative p-2">
+                 <Bell size={20} className={hasNewNotification ? "text-cyan-400 animate-bounce" : "text-slate-500"}/>
+                 {hasNewNotification && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>}
+              </button>
            </div>
-           <div className="flex gap-1 overflow-x-auto no-scrollbar max-w-[200px]">
-              {['analytics', 'transactions', 'packages', 'users'].map(t => (
-                 <button key={t} onClick={() => setAdminActiveTab(t as any)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${adminActiveTab === t ? 'bg-cyan-500 text-black' : 'text-slate-500'}`}>{t}</button>
+           <div className="flex gap-1 overflow-x-auto no-scrollbar p-2 bg-black/20">
+              {['analytics', 'transactions', 'packages', 'users', 'logs'].map(t => (
+                 <button key={t} onClick={() => { setAdminActiveTab(t as any); if (t === 'transactions') setHasNewNotification(false); }} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase whitespace-nowrap transition-all ${adminActiveTab === t ? 'bg-cyan-500 text-black' : 'text-slate-500'}`}>{t}</button>
               ))}
            </div>
-           <button onClick={handleLogout} className="text-red-500"><LogOut size={20}/></button>
         </div>
 
         {/* Admin Main Content */}
         <main className="flex-1 flex flex-col bg-[#020617] p-6 md:p-12 overflow-hidden animate-in fade-in slide-in-from-right-10 duration-500">
            <div className="flex flex-col md:flex-row items-start justify-between mb-10 gap-6">
               <div>
-                 <h2 className="text-4xl md:text-5xl font-black tracking-tighter capitalize">{adminActiveTab} <span className="text-cyan-400">Management</span></h2>
+                 <h2 className="text-4xl md:text-5xl font-black tracking-tighter capitalize">{adminActiveTab === 'logs' ? 'System Logs' : adminActiveTab} <span className="text-cyan-400">Management</span></h2>
                  <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mt-2">Real-time system oversight uplink active</p>
               </div>
               <div className="flex items-center gap-4 bg-slate-900/50 p-2 rounded-3xl border border-white/5">
@@ -465,10 +484,8 @@ const App: React.FC = () => {
                           <p className="text-[10px] text-purple-400/50 mt-1 font-bold uppercase tracking-widest">Global Deployments: {adminStats.salesCount}</p>
                        </div>
                     </div>
-
                     <div className="glass-card p-12 rounded-[4rem] border-white/5 relative overflow-hidden">
-                       <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 blur-[120px]"></div>
-                       <h3 className="text-xl font-black mb-10 flex items-center gap-3"><BarChart3 className="text-cyan-400"/> Neural Network Performance</h3>
+                       <h3 className="text-xl font-black mb-10 flex items-center gap-3"><BarChart3 className="text-cyan-400"/> System Intelligence</h3>
                        <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
                           <div className="space-y-6">
                              <div className="flex justify-between items-end">
@@ -478,7 +495,6 @@ const App: React.FC = () => {
                              <div className="h-3 w-full bg-slate-800 rounded-full overflow-hidden">
                                 <div className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 w-[65%] shadow-[0_0_20px_rgba(6,182,212,0.5)]" />
                              </div>
-                             <p className="text-[11px] text-slate-500 leading-relaxed font-bold">The system infrastructure is showing positive scaling. Automated token distribution efficiency is up by 15%.</p>
                           </div>
                           <div className="p-10 bg-black/40 rounded-[2.5rem] border border-white/5 flex items-center justify-between group">
                              <div>
@@ -497,21 +513,16 @@ const App: React.FC = () => {
                           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors" size={20}/>
                           <input type="text" placeholder="Scan by TrxID or Operative Email..." value={adminSearch} onChange={e => setAdminSearch(e.target.value)} className="w-full bg-slate-900 border border-white/5 rounded-[2rem] py-5 pl-14 pr-6 outline-none focus:border-cyan-500/40 transition-all text-sm font-bold shadow-2xl" />
                        </div>
-                       <div className="relative group">
-                          <Filter className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
-                          <select value={adminMethodFilter} onChange={e => setAdminMethodFilter(e.target.value)} className="bg-slate-900 border border-white/5 rounded-[2rem] pl-14 pr-12 py-5 outline-none focus:border-cyan-500/40 text-sm font-black uppercase tracking-widest appearance-none cursor-pointer shadow-2xl min-w-[200px]">
-                             <option value="all">All Channels</option>
-                             <option value="bkash">bKash</option>
-                             <option value="nagad">Nagad</option>
-                             <option value="rocket">Rocket</option>
-                          </select>
-                          <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none opacity-50"><ChevronRight className="rotate-90" size={16}/></div>
-                       </div>
+                       <select value={adminMethodFilter} onChange={e => setAdminMethodFilter(e.target.value)} className="bg-slate-900 border border-white/5 rounded-[2rem] px-8 py-5 outline-none focus:border-cyan-500/40 text-sm font-black uppercase tracking-widest shadow-2xl min-w-[200px] appearance-none cursor-pointer">
+                          <option value="all">All Channels</option>
+                          <option value="bkash">bKash</option>
+                          <option value="nagad">Nagad</option>
+                          <option value="rocket">Rocket</option>
+                       </select>
                     </div>
-
                     <div className="grid gap-6">
-                      {filteredTransactions.length > 0 ? filteredTransactions.map(tx => (
-                        <div key={tx.id} className={`glass-card p-10 rounded-[3.5rem] border-white/5 flex flex-col md:flex-row items-center gap-10 group hover:border-cyan-500/30 transition-all shadow-xl animate-in fade-in duration-300 ${tx.status === 'pending' ? 'border-amber-500/20' : tx.status === 'completed' ? 'border-green-500/20 opacity-80' : 'border-red-500/20 opacity-60'}`}>
+                      {filteredTransactions.map(tx => (
+                        <div key={tx.id} className={`glass-card p-10 rounded-[3.5rem] border-white/5 flex flex-col md:flex-row items-center gap-10 group hover:border-cyan-500/30 transition-all shadow-xl ${tx.status === 'pending' ? 'border-amber-500/20 active-pulse' : tx.status === 'completed' ? 'border-green-500/20 opacity-80' : 'border-red-500/20 opacity-60'}`}>
                            <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-4 mb-4">
                                  <h3 className="text-2xl font-black truncate text-white tracking-tight">{tx.user_email}</h3>
@@ -526,150 +537,145 @@ const App: React.FC = () => {
                                     <p className="text-xs font-mono text-cyan-400 select-all tracking-wider">{tx.trx_id}</p>
                                  </div>
                                  <div className="ml-auto flex items-center gap-3">
-                                    <p className="text-[9px] font-black uppercase text-slate-500">Value</p>
                                     <p className="text-3xl font-black text-green-400">৳{tx.amount}</p>
                                  </div>
                               </div>
                            </div>
-                           <div className="shrink-0 relative">
-                              {tx.screenshot_url ? (
-                                 <div className="group/img relative">
-                                    <img src={tx.screenshot_url} onClick={() => setViewingScreenshot(tx.screenshot_url || null)} className="w-32 h-32 object-cover rounded-[2.5rem] border-2 border-white/10 cursor-zoom-in group-hover/img:scale-105 group-hover/img:border-cyan-500/50 transition-all shadow-2xl" alt="Proof" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 flex items-center justify-center rounded-[2.5rem] pointer-events-none transition-opacity">
-                                       <Search className="text-white" size={24}/>
-                                    </div>
-                                 </div>
-                              ) : <div className="w-32 h-32 bg-white/5 rounded-[2.5rem] flex items-center justify-center text-slate-800 border-2 border-dashed border-white/10"><AlertCircle size={40}/></div>}
+                           <div className="shrink-0">
+                              {tx.screenshot_url ? <img src={tx.screenshot_url} onClick={() => setViewingScreenshot(tx.screenshot_url || null)} className="w-32 h-32 object-cover rounded-[2.5rem] border-2 border-white/10 cursor-zoom-in hover:scale-105 transition-all shadow-2xl" alt="Proof" /> : <div className="w-32 h-32 bg-white/5 rounded-[2.5rem] flex items-center justify-center text-slate-800 border-2 border-dashed border-white/10"><AlertCircle size={40}/></div>}
                            </div>
                            {tx.status === 'pending' && (
                               <div className="flex flex-row md:flex-col gap-3">
-                                 <button onClick={() => handleApprove(tx.id)} className="p-6 bg-green-500/10 text-green-500 rounded-[2rem] hover:bg-green-500 hover:text-black transition-all shadow-lg active:scale-95 group/btn"><CheckCircle2 size={32} className="group-hover/btn:scale-110 transition-transform"/></button>
-                                 <button onClick={() => handleReject(tx.id)} className="p-6 bg-red-500/10 text-red-500 rounded-[2rem] hover:bg-red-500 hover:text-white transition-all shadow-lg active:scale-95 group/btn"><XCircle size={32} className="group-hover/btn:scale-110 transition-transform"/></button>
+                                 <button onClick={() => handleApprove(tx.id)} className="p-6 bg-green-500/10 text-green-500 rounded-[2rem] hover:bg-green-500 hover:text-black transition-all shadow-lg active:scale-95"><CheckCircle2 size={32}/></button>
+                                 <button onClick={() => handleReject(tx.id)} className="p-6 bg-red-500/10 text-red-500 rounded-[2rem] hover:bg-red-500 hover:text-white transition-all shadow-lg active:scale-95"><XCircle size={32}/></button>
                               </div>
                            )}
                         </div>
-                      )) : (
-                        <div className="text-center py-20 bg-white/5 rounded-[4rem] border border-dashed border-white/10"><Search size={48} className="mx-auto text-slate-700 mb-4"/><p className="text-slate-500 font-black uppercase tracking-widest text-xs">No matching transmissions detected</p></div>
-                      )}
+                      ))}
                     </div>
                  </div>
               ) : adminActiveTab === 'packages' ? (
                  <div className="space-y-10 animate-in zoom-in-95 duration-500">
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                       <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Core Subscription Matrix</p>
-                       <button onClick={() => setEditingPackage({ name: '', price: 0, tokens: 0, color: 'cyan', icon: 'Package' })} className="w-full md:w-auto px-8 py-5 bg-cyan-600 rounded-[2rem] text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-cyan-500 hover:text-black transition-all shadow-2xl active:scale-95"><Plus size={18}/> Initiate New Package</button>
+                    <div className="flex items-center justify-between">
+                       <button onClick={() => setEditingPackage({ name: '', price: 0, tokens: 0, color: 'cyan', icon: 'Package' })} className="px-8 py-5 bg-cyan-600 rounded-[2rem] text-[11px] font-black uppercase tracking-widest flex items-center gap-3 hover:bg-cyan-500 hover:text-black transition-all shadow-2xl"><Plus size={18}/> Initiate New Package</button>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                        {packages.map(pkg => (
                           <div key={pkg.id} className="glass-card p-12 rounded-[4.5rem] border-white/5 group hover:border-cyan-500/30 transition-all relative overflow-hidden shadow-2xl">
-                             <div className="absolute -top-10 -right-10 w-40 h-40 bg-cyan-500/5 rounded-full blur-3xl"></div>
                              <div className="absolute top-8 right-8 flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => setEditingPackage(pkg)} className="p-4 bg-white/5 rounded-2xl text-slate-500 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all shadow-lg"><Edit2 size={18}/></button>
-                                <button onClick={() => handleDeletePackage(pkg.id)} className="p-4 bg-white/5 rounded-2xl text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all shadow-lg"><Trash2 size={18}/></button>
+                                <button onClick={() => setEditingPackage(pkg)} className="p-4 bg-white/5 rounded-2xl text-slate-500 hover:text-cyan-400 hover:bg-cyan-400/10 transition-all"><Edit2 size={18}/></button>
+                                <button onClick={() => handleDeletePackage(pkg.id)} className="p-4 bg-white/5 rounded-2xl text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-all"><Trash2 size={18}/></button>
                              </div>
-                             <div className="w-16 h-16 bg-white/5 rounded-[1.5rem] flex items-center justify-center mb-8 border border-white/10"><PackageIcon className="text-cyan-400" size={32}/></div>
                              <h4 className="text-3xl font-black text-white mb-2 tracking-tight">{pkg.name}</h4>
-                             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-10">Unit Output: {pkg.tokens} Tokens</p>
-                             
-                             <div className="pt-10 border-t border-white/5 flex items-center justify-between">
-                                <span className="text-3xl font-black text-white">৳{pkg.price}</span>
-                                {pkg.is_popular && <span className="px-5 py-1.5 bg-amber-500/20 text-amber-500 text-[9px] font-black uppercase rounded-full border border-amber-500/20 shadow-lg">Popular Matrix</span>}
+                             <p className="text-4xl font-black text-cyan-400 tracking-tighter mt-4">{pkg.tokens} <span className="text-xs uppercase opacity-30">Tokens</span></p>
+                             <div className="mt-8 pt-8 border-t border-white/5 flex items-center justify-between">
+                                <span className="text-3xl font-black">৳{pkg.price}</span>
+                                {pkg.is_popular && <span className="px-5 py-1.5 bg-amber-500/20 text-amber-500 text-[9px] font-black uppercase rounded-full">Popular Configuration</span>}
                              </div>
                           </div>
                        ))}
                     </div>
-
-                    {editingPackage && (
-                       <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-6 animate-in zoom-in-95 duration-500">
-                          <div className="max-w-xl w-full glass-card p-12 rounded-[4rem] border-white/10 shadow-2xl relative overflow-hidden">
-                             <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/10 blur-[80px]"></div>
-                             <div className="flex items-center justify-between mb-10">
-                                <h2 className="text-4xl font-black tracking-tighter">{editingPackage.id ? 'Modify' : 'Initialize'} <span className="text-cyan-400">Package</span></h2>
-                                <button onClick={() => setEditingPackage(null)} className="p-4 hover:bg-white/5 rounded-full transition-colors"><X size={24}/></button>
-                             </div>
-                             <div className="space-y-8">
-                                <div className="space-y-2">
-                                   <label className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 ml-2">Package Descriptor</label>
-                                   <input type="text" value={editingPackage.name} onChange={e => setEditingPackage({...editingPackage, name: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-[1.5rem] p-5 text-sm font-bold shadow-inner outline-none focus:border-cyan-500/50" placeholder="e.g. Developer Starter" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-6">
-                                   <div className="space-y-2">
-                                      <label className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 ml-2">Fiat Value (BDT)</label>
-                                      <input type="number" value={editingPackage.price} onChange={e => setEditingPackage({...editingPackage, price: Number(e.target.value)})} className="w-full bg-black/40 border border-white/5 rounded-[1.5rem] p-5 text-sm font-bold shadow-inner outline-none focus:border-cyan-500/50" placeholder="500" />
-                                   </div>
-                                   <div className="space-y-2">
-                                      <label className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 ml-2">Neural Tokens</label>
-                                      <input type="number" value={editingPackage.tokens} onChange={e => setEditingPackage({...editingPackage, tokens: Number(e.target.value)})} className="w-full bg-black/40 border border-white/5 rounded-[1.5rem] p-5 text-sm font-bold shadow-inner outline-none focus:border-cyan-500/50" placeholder="100" />
-                                   </div>
-                                </div>
-                                <div className="flex items-center gap-4 py-4 px-6 bg-white/5 rounded-[1.5rem] border border-white/5 group">
-                                   <input type="checkbox" id="is_pop" checked={editingPackage.is_popular} onChange={e => setEditingPackage({...editingPackage, is_popular: e.target.checked})} className="w-6 h-6 rounded-lg accent-cyan-500 cursor-pointer" />
-                                   <label htmlFor="is_pop" className="text-sm font-black uppercase tracking-widest cursor-pointer group-hover:text-cyan-400 transition-colors">Mark as Popular Configuration</label>
-                                </div>
-                                <div className="flex gap-4 pt-6">
-                                   <button onClick={() => setEditingPackage(null)} className="flex-1 py-5 bg-white/5 rounded-[2rem] font-black uppercase text-xs tracking-widest hover:bg-white/10 transition-all">Abort</button>
-                                   <button onClick={handleSavePackage} className="flex-1 py-5 bg-cyan-600 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-2xl hover:bg-cyan-500 hover:text-black transition-all active:scale-95 flex items-center justify-center gap-2"><Save size={18}/> Commit Changes</button>
-                                </div>
-                             </div>
-                          </div>
-                       </div>
-                    )}
                  </div>
-              ) : (
+              ) : adminActiveTab === 'users' ? (
                  <div className="space-y-10 animate-in slide-in-from-bottom-10 duration-500">
                     <div className="relative group">
-                       <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors" size={20}/>
+                       <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500" size={20}/>
                        <input type="text" placeholder="Scan System Operatives by Email or Identity..." value={adminSearch} onChange={e => setAdminSearch(e.target.value)} className="w-full bg-slate-900 border border-white/5 rounded-[2.5rem] py-5 pl-14 pr-6 outline-none focus:border-cyan-500/40 transition-all text-sm font-bold shadow-2xl" />
                     </div>
-                    
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {filteredUsers.length > 0 ? filteredUsers.map(u => (
-                        <div key={u.id} className={`glass-card p-8 rounded-[3.5rem] border-white/5 flex flex-col md:flex-row items-center gap-8 group hover:border-cyan-500/30 transition-all shadow-xl relative overflow-hidden ${u.is_banned ? 'opacity-40 grayscale-50' : ''}`}>
-                           {u.is_banned && <div className="absolute inset-0 bg-red-900/5 pointer-events-none"></div>}
-                           <div className="w-24 h-24 rounded-[2rem] border-4 border-white/5 p-1 shrink-0 overflow-hidden shadow-2xl group-hover:scale-105 transition-transform bg-slate-900">
+                      {filteredUsers.map(u => (
+                        <div key={u.id} className={`glass-card p-8 rounded-[3.5rem] border-white/5 flex flex-col md:flex-row items-center gap-8 group hover:border-cyan-500/30 transition-all shadow-xl ${u.is_banned ? 'opacity-40 grayscale' : ''}`}>
+                           <div className="w-24 h-24 rounded-[2rem] border-4 border-white/5 p-1 shrink-0 overflow-hidden bg-slate-900">
                               <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.email}`} className="w-full h-full object-cover" alt="User" />
                            </div>
                            <div className="flex-1 text-center md:text-left">
                               <h3 className="text-2xl font-black text-white flex items-center gap-3 justify-center md:justify-start">
                                  {u.name || u.email.split('@')[0]}
-                                 {u.is_banned && <span className="bg-red-500/20 text-red-500 text-[9px] px-3 py-1 rounded-full border border-red-500/30 shadow-lg font-black uppercase tracking-widest">DEACTIVATED</span>}
+                                 {u.is_banned && <span className="bg-red-500/20 text-red-500 text-[9px] px-3 py-1 rounded-full border border-red-500/30 font-black">DEACTIVATED</span>}
                               </h3>
-                              <p className="text-xs text-slate-500 font-bold mb-3">{u.email}</p>
-                              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/5">
-                                 <Clock size={10} className="text-slate-600"/>
-                                 <span className="text-[9px] text-slate-600 uppercase font-black tracking-widest">Joined: {new Date(u.joinedAt).toLocaleDateString()}</span>
-                              </div>
+                              <p className="text-xs text-slate-500 font-bold">{u.email}</p>
                            </div>
-                           <div className="px-10 py-5 bg-black/40 rounded-[2rem] border border-white/5 text-center min-w-[140px] shadow-inner">
-                              <p className="text-[9px] font-black uppercase text-slate-500 mb-2 tracking-[0.2em]">Neural Power</p>
-                              <p className="text-4xl font-black text-cyan-400 tracking-tighter">{u.tokens}</p>
+                           <div className="px-10 py-5 bg-black/40 rounded-[2rem] border border-white/5 text-center min-w-[140px]">
+                              <p className="text-[9px] font-black uppercase text-slate-500 mb-2">Neural Power</p>
+                              <p className="text-4xl font-black text-cyan-400">{u.tokens}</p>
                            </div>
                            <div className="flex flex-row md:flex-col gap-3">
-                              <button onClick={() => handleAdjustTokens(u.id, u.tokens)} className="p-5 bg-cyan-500/10 text-cyan-500 rounded-2xl hover:bg-cyan-500 hover:text-black transition-all shadow-xl active:scale-90" title="Modify Tokens"><TrendingUp size={24}/></button>
-                              <button onClick={() => handleToggleBan(u.id, !!u.is_banned)} className={`p-5 rounded-2xl transition-all shadow-xl active:scale-90 ${u.is_banned ? 'bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white'}`} title={u.is_banned ? 'Re-activate' : 'Deactivate'}>
+                              <button onClick={() => handleAdjustTokens(u.id, u.tokens)} className="p-5 bg-cyan-500/10 text-cyan-500 rounded-2xl hover:bg-cyan-500 hover:text-black transition-all shadow-xl"><TrendingUp size={24}/></button>
+                              <button onClick={() => handleToggleBan(u.id, !!u.is_banned)} className={`p-5 rounded-2xl transition-all shadow-xl ${u.is_banned ? 'bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white'}`}>
                                  {u.is_banned ? <ShieldCheck size={24}/> : <Ban size={24}/>}
                               </button>
                            </div>
                         </div>
-                      )) : (
-                        <div className="col-span-full text-center py-20 bg-white/5 rounded-[4rem] border border-dashed border-white/10"><Users size={48} className="mx-auto text-slate-700 mb-4"/><p className="text-slate-500 font-black uppercase tracking-widest text-xs">No operatives found in current sector</p></div>
-                      )}
+                      ))}
                     </div>
                  </div>
+              ) : (
+                <div className="space-y-6 animate-in fade-in">
+                   <div className="glass-card rounded-[3rem] border-white/5 overflow-hidden shadow-2xl">
+                      <table className="w-full text-left">
+                         <thead>
+                            <tr className="bg-white/5 border-b border-white/5">
+                               <th className="p-8 text-[11px] font-black uppercase tracking-widest text-slate-500">Admin Email</th>
+                               <th className="p-8 text-[11px] font-black uppercase tracking-widest text-slate-500">Action</th>
+                               <th className="p-8 text-[11px] font-black uppercase tracking-widest text-slate-500">Details</th>
+                               <th className="p-8 text-[11px] font-black uppercase tracking-widest text-slate-500">Timestamp</th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y divide-white/5">
+                            {adminActivityLogs.map(log => (
+                               <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                                  <td className="p-8 text-sm font-bold text-cyan-400">{log.admin_email}</td>
+                                  <td className="p-8">
+                                     <span className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-black uppercase tracking-widest text-white">{log.action}</span>
+                                  </td>
+                                  <td className="p-8 text-xs text-slate-400 font-medium">{log.details}</td>
+                                  <td className="p-8 text-[10px] text-slate-600 font-mono">{new Date(log.created_at).toLocaleString()}</td>
+                               </tr>
+                            ))}
+                         </tbody>
+                      </table>
+                   </div>
+                </div>
               )}
            </div>
 
            {viewingScreenshot && (
              <div className="fixed inset-0 z-[200] bg-black/98 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in" onClick={() => setViewingScreenshot(null)}>
                 <div className="relative max-w-5xl w-full flex flex-col items-center">
-                   <img src={viewingScreenshot} className="max-h-[85vh] rounded-[4rem] shadow-[0_0_80px_rgba(0,0,0,0.8)] border border-white/10 p-2 bg-white/5" alt="Full Proof" />
+                   <img src={viewingScreenshot} className="max-h-[85vh] rounded-[4rem] shadow-2xl border border-white/10 p-2 bg-white/5" alt="Full Proof" />
                    <button className="absolute -top-16 right-0 p-5 bg-white/10 rounded-full text-white hover:bg-red-500 transition-colors shadow-2xl"><X size={32}/></button>
-                   <p className="mt-8 text-slate-500 font-black uppercase tracking-[0.5em] text-xs">High Resolution Transmission Preview</p>
                 </div>
              </div>
            )}
         </main>
+
+        {editingPackage && (
+           <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-6 animate-in zoom-in-95">
+              <div className="max-w-xl w-full glass-card p-12 rounded-[4rem] border-white/10 shadow-2xl">
+                 <h2 className="text-4xl font-black mb-10 tracking-tighter">Package <span className="text-cyan-400">Config</span></h2>
+                 <div className="space-y-8">
+                    <div className="space-y-2">
+                       <label className="text-[11px] font-black uppercase text-slate-500 ml-2">Name</label>
+                       <input type="text" value={editingPackage.name} onChange={e => setEditingPackage({...editingPackage, name: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-[1.5rem] p-5 text-sm" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-6">
+                       <div className="space-y-2">
+                          <label className="text-[11px] font-black uppercase text-slate-500 ml-2">Price (BDT)</label>
+                          <input type="number" value={editingPackage.price} onChange={e => setEditingPackage({...editingPackage, price: Number(e.target.value)})} className="w-full bg-black/40 border border-white/5 rounded-[1.5rem] p-5 text-sm" />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[11px] font-black uppercase text-slate-500 ml-2">Tokens</label>
+                          <input type="number" value={editingPackage.tokens} onChange={e => setEditingPackage({...editingPackage, tokens: Number(e.target.value)})} className="w-full bg-black/40 border border-white/5 rounded-[1.5rem] p-5 text-sm" />
+                       </div>
+                    </div>
+                    <div className="flex gap-4 pt-6">
+                       <button onClick={() => setEditingPackage(null)} className="flex-1 py-5 bg-white/5 rounded-[2rem] font-black uppercase text-xs">Abort</button>
+                       <button onClick={handleSavePackage} className="flex-1 py-5 bg-cyan-600 rounded-[2rem] font-black uppercase text-xs shadow-2xl flex items-center justify-center gap-2 hover:bg-cyan-500 hover:text-black transition-all"><Save size={18}/> Commit Changes</button>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        )}
       </div>
     );
   }

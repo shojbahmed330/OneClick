@@ -1,6 +1,6 @@
 
 import { createClient, SupabaseClient, AuthChangeEvent, Session } from '@supabase/supabase-js';
-import { User, Package, Transaction } from '../types';
+import { User, Package, Transaction, ActivityLog } from '../types';
 
 const SUPABASE_URL = 'https://ajgrlnqzwwdliaelvgoq.supabase.co'; 
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqZ3JsbnF6d3dkbGlhZWx2Z29xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0NzQ5NjAsImV4cCI6MjA4NjA1MDk2MH0.Y39Ly94CXedvrheLKYZB8DYKwZjr6rJlaDOq_8crVkU';
@@ -38,6 +38,15 @@ export class DatabaseService {
     } catch (e) {
       return null;
     }
+  }
+
+  async logActivity(adminEmail: string, action: string, details: string) {
+    await this.supabase.from('activity_logs').insert({ admin_email: adminEmail, action, details });
+  }
+
+  async getActivityLogs(): Promise<ActivityLog[]> {
+    const { data } = await this.supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(50);
+    return data || [];
   }
 
   async signUp(email: string, password: string, name?: string) {
@@ -117,7 +126,8 @@ export class DatabaseService {
         tokens: userRecord.tokens ?? 0,
         isLoggedIn: true,
         joinedAt: new Date(userRecord.created_at || Date.now()).getTime(),
-        isAdmin: isAdminEmail
+        isAdmin: isAdminEmail,
+        is_banned: userRecord.is_banned
       };
     } catch (e) {
       return null;

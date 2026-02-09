@@ -54,6 +54,14 @@ export interface Transaction {
   user_email?: string; // Virtual field for admin
 }
 
+export interface ActivityLog {
+  id: string;
+  admin_email: string;
+  action: string;
+  details: string;
+  created_at: string;
+}
+
 export interface User {
   id: string;
   email: string;
