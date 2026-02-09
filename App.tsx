@@ -164,13 +164,13 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
   const [projectFiles, setProjectFiles] = useState<Record<string, string>>({
-    'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75;"><h1>OneClick Studio</h1></div>'
+    'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75; text-align:center;"><h1>OneClick Studio</h1></div>'
   });
   const [selectedFile, setSelectedFile] = useState('index.html');
   
   const [githubConfig, setGithubConfig] = useState<GithubConfig>({ token: '', repo: '', owner: '' });
   const [buildStatus, setBuildStatus] = useState<{ status: 'idle' | 'pushing' | 'building' | 'success' | 'error', message: string, apkUrl?: string, webUrl?: string }>({ status: 'idle', message: '' });
-  const [mobileTab, setMobileTab] = useState<'chat' | 'preview'>('chat');
+  const [mobileTab, setMobileTab] = useState<'chat' | 'preview'>('preview');
   const [logoClicks, setLogoClicks] = useState(0);
   const [packages, setPackages] = useState<Package[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -353,24 +353,24 @@ const App: React.FC = () => {
                 </div>
               </div>
             </section>
-            <section className={`flex-1 flex flex-col items-center justify-center p-4 relative ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
+            <section className={`flex-1 flex flex-col items-center justify-center p-2 md:p-4 relative ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="absolute inset-0 bg-grid opacity-30"></div>
-              <div className="relative z-10 w-full max-w-[360px] h-[720px] bg-slate-900 rounded-[3.5rem] border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col">
-                 <div className="h-8 w-full flex items-center justify-center"><div className="w-20 h-5 bg-slate-800 rounded-b-xl"></div></div>
+              <div className="relative z-10 w-full max-w-[340px] md:max-w-[360px] aspect-[9/18.5] md:h-[720px] bg-slate-900 rounded-[3rem] md:rounded-[3.5rem] border-[6px] md:border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col">
+                 <div className="h-6 md:h-8 w-full flex items-center justify-center"><div className="w-16 md:w-20 h-4 md:h-5 bg-slate-800 rounded-b-xl"></div></div>
                  <iframe srcDoc={projectFiles['index.html']} className="flex-1 w-full bg-white" title="preview" />
-                 <div className="h-10 w-full flex items-center justify-center gap-8 bg-slate-800/20 backdrop-blur-md">
-                    <button className="text-slate-500"><Circle size={14}/></button>
-                    <button className="text-slate-500"><Square size={14}/></button>
+                 <div className="h-8 md:h-10 w-full flex items-center justify-center gap-6 md:gap-8 bg-slate-800/20 backdrop-blur-md">
+                    <button className="text-slate-500"><Circle size={12}/></button>
+                    <button className="text-slate-500"><Square size={12}/></button>
                  </div>
               </div>
               <button onClick={() => { setMode(AppMode.EDIT); handleBuildAPK(); }} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30 hidden lg:flex">
                 <Rocket size={18}/> Build Android APK
               </button>
               
-              {/* Mobile Chat/Preview Toggle - Moved up to not overlap bottom nav */}
+              {/* Mobile Chat/Preview Toggle */}
               <div className="lg:hidden fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 flex gap-1 z-[110]">
-                 <button onClick={() => setMobileTab('chat')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Chat</button>
-                 <button onClick={() => setMobileTab('preview')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Visual</button>
+                 <button onClick={() => setMobileTab('chat')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400'}`}>Chat</button>
+                 <button onClick={() => setMobileTab('preview')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400'}`}>Visual</button>
               </div>
             </section>
           </div>
