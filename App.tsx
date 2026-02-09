@@ -275,7 +275,12 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                         <td className="p-6"><span className="text-pink-400 font-mono">{tx.payment_method}</span><br/><span className="opacity-50">{tx.trx_id}</span></td>
                         <td className="p-6">
                           <div className="max-w-[200px] truncate opacity-60 mb-2">{tx.message || 'No Message'}</div>
-                          {tx.screenshot_url ? <a href={tx.screenshot_url} target="_blank" className="text-blue-400 hover:underline flex items-center gap-1"><Upload size={12}/> View Image</a> : <span className="opacity-30">No Proof</span>}
+                          {tx.screenshot_url ? (
+                            <div className="relative group w-20 h-12 overflow-hidden rounded-lg cursor-zoom-in">
+                               <img src={tx.screenshot_url} className="w-full h-full object-cover group-hover:scale-125 transition-all" />
+                               <a href={tx.screenshot_url} target="_blank" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-black">VIEW</a>
+                            </div>
+                          ) : <span className="opacity-30">No Proof</span>}
                         </td>
                         <td className="p-6">
                           {tx.status === 'pending' ? (
@@ -402,6 +407,23 @@ const App: React.FC = () => {
   const db = DatabaseService.getInstance();
   const github = useRef(new GithubService());
 
+  // Supabase Real-time Token Sync
+  useEffect(() => {
+    if (user?.id) {
+      const channel = db.supabase
+        .channel(`user_sync_${user.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, 
+          (payload) => {
+            if (payload.new && (payload.new as any).tokens !== undefined) {
+              setUser(prev => prev ? { ...prev, tokens: (payload.new as any).tokens } : null);
+            }
+          }
+        )
+        .subscribe();
+      return () => { db.supabase.removeChannel(channel); };
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     db.getCurrentSession().then(async session => {
       if (session?.user) {
@@ -466,6 +488,16 @@ const App: React.FC = () => {
     } catch (e: any) { alert("Download failed: " + e.message); } finally { setIsDownloading(false); }
   };
 
+  // Helper to convert file to base64 for submission
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
   const handlePaymentSubmit = async () => {
     if (!selectedPkg || !paymentMethod || !paymentForm.trxId) { alert("Please fill the Transaction ID (TrxID)."); return; }
     setPaymentSubmitting(true);
@@ -475,13 +507,34 @@ const App: React.FC = () => {
     } catch (e: any) { alert("Submission failed: " + e.message); } finally { setPaymentSubmitting(false); }
   };
 
-  const handleAvatarUpload = async () => {
-    const url = prompt("Enter Image URL for profile avatar:");
-    if (url && user) {
-      await db.updateUserAvatar(user.id, url);
-      const updated = await db.getUser(user.email, user.id);
-      if (updated) setUser(updated);
-    }
+  const handleAvatarUpload = () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (file && user) {
+        const base64 = await fileToBase64(file);
+        await db.updateUserAvatar(user.id, base64);
+        setUser({ ...user, avatar_url: base64 });
+        alert("Profile photo updated!");
+      }
+    };
+    fileInput.click();
+  };
+
+  const handlePaymentScreenshotUpload = () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        const base64 = await fileToBase64(file);
+        setPaymentForm({ ...paymentForm, screenshot: base64 });
+      }
+    };
+    fileInput.click();
   };
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0a0110] text-[#ff2d75]"><Loader2 className="animate-spin" size={40}/></div>;
@@ -624,7 +677,7 @@ const App: React.FC = () => {
                      ].map(m => (
                        <button key={m.id} onClick={() => { setPaymentMethod(m.id as any); setPaymentStep('form'); }} className={`w-full p-6 ${m.color} rounded-2xl flex items-center justify-between shadow-xl active:scale-95 transition-transform`}>
                           <span className="font-black uppercase">{m.id}</span>
-                          <span className="text-xs opacity-90 font-mono">01721013902</span>
+                          <span className="text-xs opacity-90 font-mono tracking-widest">01721013902</span>
                        </button>
                      ))}
                      <button onClick={() => setPaymentStep('idle')} className="w-full py-4 text-slate-500 text-xs font-black uppercase">Cancel</button>
@@ -634,9 +687,9 @@ const App: React.FC = () => {
                <div className="max-w-md mx-auto glass-tech p-10 rounded-[3rem] animate-in zoom-in">
                   <h3 className="text-2xl font-black mb-2">{paymentMethod} <span className="text-pink-500">Gateway</span></h3>
                   <div className="bg-pink-500/10 p-4 rounded-2xl border border-pink-500/20 mb-6">
-                    <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Send Money To:</p>
+                    <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Send Money To (Personal):</p>
                     <p className="text-2xl font-black text-white tracking-widest">01721013902</p>
-                    <p className="text-[10px] text-pink-400/80 mt-1">Amount: <span className="font-black">৳{selectedPkg?.price}</span></p>
+                    <p className="text-[10px] text-pink-400/80 mt-1">Payable: <span className="font-black">৳{selectedPkg?.price}</span></p>
                   </div>
                   <div className="space-y-4">
                      <div className="space-y-1">
@@ -644,12 +697,27 @@ const App: React.FC = () => {
                         <input required value={paymentForm.trxId} onChange={e => setPaymentForm({...paymentForm, trxId: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-pink-500/50 outline-none" placeholder="Enter TrxID here" />
                      </div>
                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Proof/Screenshot URL</label>
-                        <input value={paymentForm.screenshot} onChange={e => setPaymentForm({...paymentForm, screenshot: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-pink-500/50 outline-none" placeholder="Image URL (ImgBB/Lightshot)" />
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Upload Screenshot (Proof)</label>
+                        <div onClick={handlePaymentScreenshotUpload} className="w-full h-32 bg-black/40 border border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-black/60 transition-all overflow-hidden relative">
+                           {paymentForm.screenshot ? (
+                             <>
+                                <img src={paymentForm.screenshot} className="w-full h-full object-cover opacity-40" />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                                   <RefreshCw size={24} className="mb-2"/>
+                                   <span className="text-[10px] font-black uppercase">Tap to Change</span>
+                                </div>
+                             </>
+                           ) : (
+                             <>
+                                <Upload size={24} className="text-slate-500 mb-2" />
+                                <span className="text-[10px] font-black uppercase text-slate-500">Select Image File</span>
+                             </>
+                           )}
+                        </div>
                      </div>
                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Message to Admin</label>
-                        <textarea value={paymentForm.message} onChange={e => setPaymentForm({...paymentForm, message: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-sm h-20 resize-none outline-none" placeholder="Optional notes..." />
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Message (Optional)</label>
+                        <textarea value={paymentForm.message} onChange={e => setPaymentForm({...paymentForm, message: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-sm h-16 resize-none outline-none" placeholder="Notes for admin..." />
                      </div>
                      <button disabled={paymentSubmitting} onClick={handlePaymentSubmit} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50">
                         {paymentSubmitting ? <Loader2 className="animate-spin mx-auto"/> : 'Securely Send Proof'}
@@ -677,7 +745,7 @@ const App: React.FC = () => {
                       <div className="absolute inset-0 bg-black/60 rounded-[2.5rem] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
                         <div className="flex flex-col items-center gap-2">
                            <Upload size={24} className="text-white"/>
-                           <span className="text-[10px] font-black uppercase text-white tracking-widest">Update</span>
+                           <span className="text-[10px] font-black uppercase text-white tracking-widest">Upload Photo</span>
                         </div>
                       </div>
                    </div>
