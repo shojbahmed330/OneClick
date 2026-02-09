@@ -52,7 +52,7 @@ const ScanPage: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
   );
 };
 
-// --- AUTH PAGE (LOGIN/REGISTER) ---
+// --- AUTH PAGE ---
 const AuthPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLoginSuccess }) => {
   const [isRegister, setIsRegister] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
@@ -82,7 +82,6 @@ const AuthPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLo
     <div className="h-[100dvh] w-full flex items-center justify-center bg-[#0a0110] text-white p-4">
       <div className="relative w-full max-w-[420px] h-[550px] [perspective:1200px]">
         <div className={`relative w-full h-full transition-transform duration-1000 [transform-style:preserve-3d] ${isRegister ? '[transform:rotateY(-180deg)]' : ''}`}>
-          {/* Login Front */}
           <div className="absolute inset-0 [backface-visibility:hidden] glass-tech rounded-[3rem] p-10 flex flex-col justify-center border-pink-500/20 shadow-2xl">
             <h2 className="text-3xl font-black mb-8">System <span className="text-pink-500">Login</span></h2>
             <form onSubmit={handleAuth} className="space-y-5">
@@ -94,7 +93,6 @@ const AuthPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLo
             </form>
             <button onClick={() => setIsRegister(true)} className="mt-6 text-xs text-pink-400 font-bold hover:underline">New developer? Registry here</button>
           </div>
-          {/* Register Back */}
           <div className="absolute inset-0 [backface-visibility:hidden] glass-tech rounded-[3rem] p-10 flex flex-col justify-center border-pink-500/20 shadow-2xl [transform:rotateY(180deg)]">
             <h2 className="text-3xl font-black mb-8">New <span className="text-pink-500">Registry</span></h2>
             <form onSubmit={handleAuth} className="space-y-5">
@@ -153,6 +151,221 @@ const AdminLoginPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = (
   );
 };
 
+// --- ADMIN PANEL COMPONENT ---
+const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
+  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'payments' | 'packages' | 'logs'>('stats');
+  const [stats, setStats] = useState({ totalRevenue: 0, usersToday: 0, topPackage: 'N/A', salesCount: 0 });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [adminUsers, setAdminUsers] = useState<UserType[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const db = DatabaseService.getInstance();
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === 'stats') setStats(await db.getAdminStats());
+      if (activeTab === 'payments') setTransactions(await db.getAdminTransactions());
+      if (activeTab === 'packages') setPackages(await db.getPackages());
+      if (activeTab === 'logs') setActivityLogs(await db.getActivityLogs());
+      if (activeTab === 'users') {
+        const { data } = await db.supabase.from('users').select('*').order('created_at', { ascending: false });
+        setAdminUsers(data || []);
+      }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  useEffect(() => { loadData(); }, [activeTab]);
+
+  const handleApprove = async (txId: string) => {
+    if (!confirm("Approve this payment? Tokens will be added instantly.")) return;
+    try {
+      await db.approveTransaction(txId);
+      await db.logActivity(user.email, 'PAYMENT_APPROVE', `Approved TX: ${txId}`);
+      loadData();
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const handleReject = async (txId: string) => {
+    if (!confirm("Reject this payment?")) return;
+    try {
+      await db.rejectTransaction(txId);
+      await db.logActivity(user.email, 'PAYMENT_REJECT', `Rejected TX: ${txId}`);
+      loadData();
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const handleBan = async (uid: string, email: string) => {
+    if (!confirm(`Ban user ${email}?`)) return;
+    await db.supabase.from('users').update({ is_banned: true }).eq('id', uid);
+    await db.logActivity(user.email, 'USER_BAN', `Banned: ${email}`);
+    loadData();
+  };
+
+  const handleUnban = async (uid: string, email: string) => {
+    await db.supabase.from('users').update({ is_banned: false }).eq('id', uid);
+    await db.logActivity(user.email, 'USER_UNBAN', `Unbanned: ${email}`);
+    loadData();
+  };
+
+  return (
+    <div className="flex-1 flex flex-col md:flex-row h-full overflow-hidden bg-[#050108]">
+      <aside className="w-full md:w-64 border-r border-pink-500/10 bg-black/40 p-6 flex flex-col gap-2">
+        <div className="mb-8 px-2">
+          <h2 className="text-xl font-black tracking-tighter text-pink-500">ADMIN <span className="text-white">HQ</span></h2>
+          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.3em]">Neural Control Center</p>
+        </div>
+        {[
+          { id: 'stats', icon: BarChart3, label: 'Dashboard' },
+          { id: 'users', icon: Users, label: 'Members' },
+          { id: 'payments', icon: CreditCard, label: 'Payments' },
+          { id: 'packages', icon: PackageIcon, label: 'Packages' },
+          { id: 'logs', icon: Terminal, label: 'System Logs' }
+        ].map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-xs font-black uppercase transition-all ${activeTab === tab.id ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white/5'}`}>
+            <tab.icon size={18} /> {tab.label}
+          </button>
+        ))}
+      </aside>
+
+      <main className="flex-1 p-6 md:p-10 overflow-y-auto code-scroll">
+        {loading ? <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-pink-500" size={40}/></div> : (
+          <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
+            {activeTab === 'stats' && (
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  {[
+                    { label: 'Total Revenue', value: `৳${stats.totalRevenue}`, icon: Wallet, color: 'text-green-400' },
+                    { label: 'New Users Today', value: stats.usersToday, icon: UserIcon, color: 'text-blue-400' },
+                    { label: 'Top Package', value: stats.topPackage, icon: Trophy, color: 'text-yellow-400' },
+                    { label: 'Total Sales', value: stats.salesCount, icon: ShoppingCart, color: 'text-pink-400' }
+                  ].map((s, i) => (
+                    <div key={i} className="glass-tech p-8 rounded-[2rem] border-white/5">
+                      <s.icon className={`${s.color} mb-4`} size={24} />
+                      <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">{s.label}</div>
+                      <div className="text-3xl font-black text-white mt-2 tracking-tighter">{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'payments' && (
+              <div className="glass-tech rounded-[2.5rem] overflow-hidden border-white/5">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-white/5 text-pink-500 font-black uppercase tracking-widest">
+                    <tr>
+                      <th className="p-6">User/Email</th>
+                      <th className="p-6">Amount</th>
+                      <th className="p-6">Method/Trx</th>
+                      <th className="p-6">Proof</th>
+                      <th className="p-6">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {transactions.map(tx => (
+                      <tr key={tx.id} className="hover:bg-white/5 transition-colors">
+                        <td className="p-6 font-bold">{tx.user_email}</td>
+                        <td className="p-6 font-black text-white">৳{tx.amount}</td>
+                        <td className="p-6"><span className="text-pink-400 font-mono">{tx.payment_method}</span><br/><span className="opacity-50">{tx.trx_id}</span></td>
+                        <td className="p-6">
+                          {tx.screenshot_url ? <a href={tx.screenshot_url} target="_blank" className="text-blue-400 hover:underline">View Image</a> : 'No Proof'}
+                        </td>
+                        <td className="p-6">
+                          {tx.status === 'pending' ? (
+                            <div className="flex gap-2">
+                              <button onClick={() => handleApprove(tx.id)} className="p-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500 hover:text-white transition-all"><Check size={16}/></button>
+                              <button onClick={() => handleReject(tx.id)} className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white transition-all"><X size={16}/></button>
+                            </div>
+                          ) : <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${tx.status === 'completed' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>{tx.status}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {activeTab === 'users' && (
+              <div className="space-y-6">
+                <div className="glass-tech rounded-2xl p-4 border-white/5 flex items-center gap-4">
+                  <Search className="text-slate-500" size={20}/>
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search member by email or ID..." className="flex-1 bg-transparent outline-none text-sm" />
+                </div>
+                <div className="glass-tech rounded-[2.5rem] overflow-hidden border-white/5">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-white/5 text-pink-500 font-black uppercase">
+                      <tr><th className="p-6">Member</th><th className="p-6">Tokens</th><th className="p-6">Status</th><th className="p-6">Control</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {adminUsers.filter(u => u.email.includes(searchQuery)).map(u => (
+                        <tr key={u.id} className="hover:bg-white/5">
+                          <td className="p-6">
+                            <div className="flex items-center gap-3">
+                              <img src={u.avatar_url} className="w-10 h-10 rounded-xl" />
+                              <div><div className="font-black text-white">{u.name}</div><div className="opacity-50 text-[10px]">{u.email}</div></div>
+                            </div>
+                          </td>
+                          <td className="p-6 font-mono text-pink-400 font-black text-lg">{u.tokens}</td>
+                          <td className="p-6">{u.is_banned ? <span className="text-red-500">Suspended</span> : <span className="text-green-400">Clear</span>}</td>
+                          <td className="p-6">
+                            {u.is_banned ? (
+                              <button onClick={() => handleUnban(u.id, u.email)} className="px-4 py-2 bg-green-600 rounded-xl font-black uppercase text-[10px]">Unsuspend</button>
+                            ) : (
+                              <button onClick={() => handleBan(u.id, u.email)} className="px-4 py-2 bg-red-600/20 text-red-500 border border-red-500/20 rounded-xl font-black uppercase text-[10px] hover:bg-red-600 hover:text-white transition-all">Terminate</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'packages' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {packages.map(p => (
+                  <div key={p.id} className="glass-tech p-10 rounded-[3rem] text-center relative border-white/5 group">
+                    <PackageIcon size={48} className="mx-auto text-pink-500 mb-6" />
+                    <h3 className="text-2xl font-black text-white">{p.name}</h3>
+                    <div className="text-5xl font-black text-white my-6 tracking-tighter">{p.tokens} <span className="text-[10px] opacity-30 tracking-[0.4em]">UNITS</span></div>
+                    <div className="text-2xl font-black text-pink-500 mb-8">৳{p.price}</div>
+                    <div className="flex gap-2">
+                       <button className="flex-1 py-4 bg-white/5 rounded-2xl font-black text-xs hover:bg-white/10">Modify</button>
+                       <button className="p-4 bg-red-600/20 text-red-500 rounded-2xl hover:bg-red-600 hover:text-white"><Trash2 size={18}/></button>
+                    </div>
+                  </div>
+                ))}
+                <button className="glass-tech p-10 rounded-[3rem] border-dashed border-2 border-white/10 flex flex-col items-center justify-center gap-4 hover:border-pink-500/50 transition-all group">
+                   <Plus size={48} className="text-slate-500 group-hover:text-pink-500 group-hover:scale-110 transition-all"/>
+                   <span className="text-xs font-black uppercase tracking-widest text-slate-500">Create New Package</span>
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'logs' && (
+              <div className="glass-tech rounded-[2.5rem] border-white/5 p-8 space-y-4">
+                 {activityLogs.map(log => (
+                   <div key={log.id} className="flex gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 font-mono text-[11px] items-start">
+                      <span className="text-pink-500 font-black">[{new Date(log.created_at).toLocaleTimeString()}]</span>
+                      <span className="text-blue-400 uppercase">{log.action}:</span>
+                      <span className="text-slate-300">{log.details}</span>
+                      <span className="ml-auto opacity-30">{log.admin_email}</span>
+                   </div>
+                 ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+// --- MAIN APP COMPONENT ---
 const App: React.FC = () => {
   const [user, setUser] = useState<UserType | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -167,7 +380,6 @@ const App: React.FC = () => {
     'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75; text-align:center; padding: 20px;"><h1>OneClick Studio</h1></div>'
   });
   const [selectedFile, setSelectedFile] = useState('index.html');
-  
   const [githubConfig, setGithubConfig] = useState<GithubConfig>({ token: '', repo: '', owner: '' });
   const [buildStatus, setBuildStatus] = useState<{ status: 'idle' | 'pushing' | 'building' | 'success' | 'error', message: string, apkUrl?: string, webUrl?: string }>({ status: 'idle', message: '' });
   const [mobileTab, setMobileTab] = useState<'chat' | 'preview'>('preview');
@@ -183,31 +395,18 @@ const App: React.FC = () => {
     db.getCurrentSession().then(async session => {
       if (session?.user) {
         const userData = await db.getUser(session.user.email || '', session.user.id);
-        if (userData) {
-          setUser(userData);
-          setIsScanned(true);
-        }
+        if (userData) { setUser(userData); setIsScanned(true); }
       }
       setAuthLoading(false);
     });
-    
-    db.getPackages().then(pkgs => {
-      if (pkgs && pkgs.length > 0) setPackages(pkgs);
-    });
-
+    db.getPackages().then(pkgs => pkgs.length > 0 && setPackages(pkgs));
     const savedGit = localStorage.getItem('github_config');
     if (savedGit) setGithubConfig(JSON.parse(savedGit));
   }, []);
 
-  useEffect(() => {
-    if (logoClicks >= 3) { setMode(AppMode.SETTINGS); setLogoClicks(0); }
-  }, [logoClicks]);
+  useEffect(() => { if (logoClicks >= 3) { setMode(AppMode.SETTINGS); setLogoClicks(0); } }, [logoClicks]);
 
-  const handleLogout = async () => {
-    await db.signOut();
-    setUser(null);
-    setIsScanned(false);
-  };
+  const handleLogout = async () => { await db.signOut(); setUser(null); setIsScanned(false); };
 
   const handleSend = async () => {
     if (!input.trim() || isGenerating) return;
@@ -218,27 +417,18 @@ const App: React.FC = () => {
     if (window.innerWidth < 768) setMobileTab('preview');
     try {
       const res = await gemini.current.generateWebsite(text, projectFiles, messages);
-      if (res.files) {
-        setProjectFiles(prev => ({ ...prev, ...res.files }));
-        setShowCompletion(true);
-        setTimeout(() => setShowCompletion(false), 4000);
-      }
+      if (res.files) { setProjectFiles(prev => ({ ...prev, ...res.files })); setShowCompletion(true); setTimeout(() => setShowCompletion(false), 4000); }
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: res.answer, timestamp: Date.now(), ...res }]);
       if (user) { const updated = await db.useToken(user.id, user.email); if (updated) setUser(updated); }
     } catch (e) { console.error(e); } finally { setIsGenerating(false); }
   };
 
   const handleBuildAPK = async () => {
-    if (!githubConfig.token || !githubConfig.repo) {
-      alert("Please configure GitHub settings first!");
-      setMode(AppMode.SETTINGS);
-      return;
-    }
+    if (!githubConfig.token || !githubConfig.repo) { alert("Please configure GitHub settings first!"); setMode(AppMode.SETTINGS); return; }
     setBuildStatus({ status: 'pushing', message: 'Uplinking code to GitHub...' });
     try {
       await github.current.pushToGithub(githubConfig, projectFiles);
       setBuildStatus({ status: 'building', message: 'Cloud Build sequence initiated. Please wait 3-5 mins...' });
-      
       const checkInterval = setInterval(async () => {
         const details = await github.current.getLatestApk(githubConfig);
         if (details) {
@@ -246,16 +436,11 @@ const App: React.FC = () => {
           setBuildStatus({ status: 'success', message: 'APK Synthesized Successfully!', apkUrl: details.downloadUrl, webUrl: details.webUrl });
           setTimeout(() => {
             const qrContainer = document.getElementById('qrcode');
-            if (qrContainer) {
-              qrContainer.innerHTML = '';
-              new (window as any).QRCode(qrContainer, { text: details.webUrl, width: 180, height: 180, colorDark: "#ff2d75", colorLight: "#ffffff" });
-            }
+            if (qrContainer) { qrContainer.innerHTML = ''; new (window as any).QRCode(qrContainer, { text: details.webUrl, width: 180, height: 180, colorDark: "#ff2d75", colorLight: "#ffffff" }); }
           }, 500);
         }
       }, 15000);
-    } catch (e: any) {
-      setBuildStatus({ status: 'error', message: e.message || 'Build system failure.' });
-    }
+    } catch (e: any) { setBuildStatus({ status: 'error', message: e.message || 'Build system failure.' }); }
   };
 
   const handleSecureDownload = async () => {
@@ -265,29 +450,39 @@ const App: React.FC = () => {
       const blob = await github.current.downloadArtifact(githubConfig, buildStatus.apkUrl);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `${githubConfig.repo}-build.zip`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (e: any) {
-      alert("Download failed: " + e.message);
-    } finally {
-      setIsDownloading(false);
-    }
+      a.href = url; a.download = `${githubConfig.repo}-build.zip`;
+      document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url);
+    } catch (e: any) { alert("Download failed: " + e.message); } finally { setIsDownloading(false); }
   };
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0a0110] text-[#ff2d75]"><Loader2 className="animate-spin" size={40}/></div>;
-  
   if (!user) {
     if (path === '/admin') return <AdminLoginPage onLoginSuccess={setUser} />;
     if (!isScanned) return <ScanPage onFinish={() => setIsScanned(true)} />;
     return <AuthPage onLoginSuccess={setUser} />;
   }
 
+  // Admin Route Logic
+  if (user.isAdmin && (path === '/admin' || mode === AppMode.ADMIN)) {
+    return (
+      <div className="h-screen flex flex-col text-slate-100 bg-[#0a0110]">
+        <header className="h-20 border-b border-pink-500/10 glass-tech flex items-center justify-between px-8 z-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(255,45,117,0.5)]"><ShieldAlert size={20} className="text-white"/></div>
+            <span className="font-black text-sm uppercase tracking-tighter">ADMIN <span className="text-pink-400">CONSOLE</span></span>
+          </div>
+          <div className="flex items-center gap-4">
+             <button onClick={() => setMode(AppMode.PREVIEW)} className="px-6 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">Exit Admin</button>
+             <button onClick={handleLogout} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg"><LogOut size={20}/></button>
+          </div>
+        </header>
+        <AdminPanel user={user} />
+      </div>
+    );
+  }
+
   return (
     <div className="h-[100dvh] flex flex-col text-slate-100 bg-[#0a0110] overflow-hidden">
-      {/* Toast Notification */}
       {showCompletion && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-500">
            <div className="bg-pink-600 text-white px-8 py-4 rounded-full shadow-[0_0_40px_rgba(255,45,117,0.6)] flex items-center gap-4 border border-white/20">
@@ -306,6 +501,7 @@ const App: React.FC = () => {
           {[AppMode.PREVIEW, AppMode.EDIT, AppMode.SHOP, AppMode.PROFILE].map(m => (
             <button key={m} onClick={() => setMode(m)} className={`px-6 py-2.5 text-[10px] font-black uppercase rounded-lg transition-all ${mode === m ? 'active-nav-pink' : 'text-slate-400 hover:text-white'}`}>{m}</button>
           ))}
+          {user.isAdmin && <button onClick={() => setMode(AppMode.ADMIN)} className="px-6 py-2.5 text-[10px] font-black uppercase text-purple-400 hover:text-purple-300">Admin</button>}
         </nav>
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-full text-xs font-bold text-pink-400">{user.tokens} Tokens</div>
@@ -317,9 +513,7 @@ const App: React.FC = () => {
       <main className="flex-1 flex overflow-hidden relative pb-20 md:pb-0">
         {mode === AppMode.PREVIEW ? (
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
-            {/* Main Content Area */}
             <div className="flex-1 flex flex-col lg:flex-row h-full">
-              {/* Chat Section */}
               <section className={`w-full lg:w-[450px] border-r border-pink-500/10 flex flex-col bg-[#01040f]/50 backdrop-blur-xl h-full ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'}`}>
                 <div className="flex-1 p-6 overflow-y-auto code-scroll space-y-6 pb-40">
                   {messages.length > 0 ? messages.map(m => (
@@ -356,11 +550,8 @@ const App: React.FC = () => {
                 </div>
               </section>
 
-              {/* Preview Section */}
               <section className={`flex-1 flex flex-col items-center justify-center p-4 md:p-4 relative h-full ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
                 <div className="absolute inset-0 bg-grid opacity-30 pointer-events-none"></div>
-                
-                {/* Optimized Mobile Frame */}
                 <div className="relative z-10 w-full max-w-[280px] md:max-w-[360px] max-h-[60vh] md:h-[720px] aspect-[9/18] bg-slate-900 rounded-[2.5rem] md:rounded-[3.5rem] border-[6px] md:border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col transition-all duration-500">
                    <div className="h-6 md:h-8 w-full flex items-center justify-center"><div className="w-16 md:w-20 h-3 md:h-4 bg-slate-800 rounded-b-xl"></div></div>
                    <iframe srcDoc={projectFiles['index.html']} className="flex-1 w-full bg-white" title="preview" />
@@ -369,23 +560,21 @@ const App: React.FC = () => {
                       <button className="text-slate-500"><Square size={10}/></button>
                    </div>
                 </div>
-                
                 <button onClick={() => { setMode(AppMode.EDIT); handleBuildAPK(); }} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30 hidden lg:flex">
                   <Rocket size={18}/> Build Android APK
                 </button>
               </section>
             </div>
 
-            {/* Global Mobile Chat/Preview Toggle - Always Visible in Preview Mode */}
             <div className="lg:hidden fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-2xl p-1.5 rounded-2xl border border-white/10 flex gap-1 z-[150] shadow-[0_0_40px_rgba(0,0,0,0.8)]">
                <button onClick={() => setMobileTab('chat')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.5)]' : 'text-slate-400'}`}>Chat</button>
                <button onClick={() => setMobileTab('preview')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.5)]' : 'text-slate-400'}`}>Visual</button>
             </div>
           </div>
         ) : mode === AppMode.EDIT ? (
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
             {buildStatus.status === 'idle' ? (
-              <div className="flex-1 flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
+              <>
                 <aside className="w-full md:w-64 border-r border-pink-500/10 bg-black/20 p-4 space-y-2 overflow-y-auto">
                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-500 mb-4 px-2">Project Files</h3>
                    {Object.keys(projectFiles).map(file => (
@@ -404,69 +593,77 @@ const App: React.FC = () => {
                         <Rocket size={14}/> Run Build
                       </button>
                    </div>
-                   <textarea 
-                      value={projectFiles[selectedFile]} 
-                      onChange={e => setProjectFiles(prev => ({...prev, [selectedFile]: e.target.value}))}
-                      className="flex-1 w-full bg-black/40 border border-white/5 rounded-2xl p-6 font-mono text-xs text-slate-300 outline-none focus:border-pink-500/20 resize-none code-scroll"
-                   />
+                   <textarea value={projectFiles[selectedFile]} onChange={e => setProjectFiles(prev => ({...prev, [selectedFile]: e.target.value}))} className="flex-1 w-full bg-black/40 border border-white/5 rounded-2xl p-6 font-mono text-xs text-slate-300 outline-none focus:border-pink-500/20 resize-none code-scroll" />
                 </main>
-              </div>
+              </>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-10 animate-in fade-in">
-                 <div className="glass-tech w-full max-w-2xl p-10 md:p-16 rounded-[3rem] border-pink-500/20 text-center relative overflow-hidden">
-                    <div className="shimmer-pink absolute inset-0 pointer-events-none opacity-20"></div>
+              <div className="flex-1 flex flex-col items-center justify-center p-10">
+                 <div className="glass-tech w-full max-w-2xl p-16 rounded-[3rem] text-center relative overflow-hidden">
                     {buildStatus.status === 'success' ? (
-                      <div className="space-y-8 animate-in zoom-in duration-500">
-                         <div className="w-24 h-24 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)] animate-bounce"><CheckCircle2 size={48}/></div>
-                         <h2 className="text-3xl md:text-4xl font-black text-white">APK Ready for Install</h2>
-                         
-                         <div className="p-6 bg-white rounded-3xl inline-block shadow-2xl relative">
-                            <div id="qrcode" className="min-w-[180px] min-h-[180px]"></div>
-                            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-pink-600 text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-widest text-white shadow-xl">Scan to View Page</div>
+                      <div className="space-y-8 animate-in zoom-in">
+                         <div className="w-24 h-24 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-green-500/50 shadow-lg animate-bounce"><CheckCircle2 size={48}/></div>
+                         <h2 className="text-4xl font-black text-white">APK Ready</h2>
+                         <div id="qrcode" className="p-4 bg-white rounded-3xl inline-block shadow-2xl"></div>
+                         <div className="flex gap-4 justify-center">
+                            <button onClick={handleSecureDownload} className="flex items-center gap-3 px-10 py-5 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl"><Download size={20}/> Secure Download</button>
+                            <button onClick={() => setBuildStatus({status: 'idle', message: ''})} className="px-10 py-5 bg-white/5 border border-white/10 rounded-2xl font-black uppercase text-sm">Back</button>
                          </div>
-
-                         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            <button 
-                              onClick={handleSecureDownload}
-                              disabled={isDownloading}
-                              className="flex items-center justify-center gap-3 px-10 py-5 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50"
-                            >
-                              {isDownloading ? <Loader2 className="animate-spin" size={20}/> : <Download size={20}/>} 
-                              {isDownloading ? "Downloading..." : "Secure Download"}
-                            </button>
-                            <button onClick={() => setBuildStatus({status: 'idle', message: ''})} className="px-10 py-5 bg-white/5 border border-white/10 rounded-2xl font-black uppercase text-sm hover:bg-white/10 transition-all">Back to Editor</button>
-                         </div>
-                         <p className="text-[10px] text-pink-400/50 uppercase tracking-widest italic">Scanning the code takes you to the GitHub build page for secure download.</p>
                       </div>
                     ) : (
                       <div className="space-y-8">
-                        <div className="flex justify-center mb-8">
-                           <div className="relative">
-                              <Terminal size={80} className="text-pink-500 animate-pulse"/>
-                              <Loader2 size={32} className="absolute -top-2 -right-2 text-white animate-spin"/>
-                           </div>
-                        </div>
-                        <h2 className="text-3xl font-black tracking-tight text-white uppercase">{buildStatus.status === 'pushing' ? 'Syncing Repository' : 'Compiling Native Binaries'}</h2>
-                        <p className="text-pink-400/70 font-mono text-sm h-12">{buildStatus.message}</p>
-                        <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden border border-white/5">
-                           <div className="h-full bg-gradient-to-r from-pink-600 to-purple-600 w-3/4 animate-[progress_5s_infinite] shadow-[0_0_15px_#ff2d75]"></div>
-                        </div>
-                        <button onClick={() => setBuildStatus({status: 'idle', message: ''})} className="text-xs text-slate-500 hover:text-white transition-colors">Cancel Build</button>
+                        <Terminal size={80} className="text-pink-500 animate-pulse mx-auto"/>
+                        <h2 className="text-3xl font-black text-white uppercase">{buildStatus.status === 'pushing' ? 'Syncing...' : 'Compiling...'}</h2>
+                        <p className="text-pink-400/70 font-mono text-sm">{buildStatus.message}</p>
+                        <button onClick={() => setBuildStatus({status: 'idle', message: ''})} className="text-xs text-slate-500">Cancel</button>
                       </div>
                     )}
                  </div>
               </div>
             )}
           </div>
-        ) : mode === AppMode.SETTINGS ? (
-          <div className="flex-1 p-6 md:p-20 overflow-y-auto">
-             <div className="max-w-2xl mx-auto glass-tech p-10 md:p-16 rounded-[3rem] border-pink-500/20 shadow-2xl animate-in zoom-in-95">
-                <div className="flex items-center gap-4 mb-10">
-                   <div className="w-12 h-12 bg-pink-500 rounded-2xl flex items-center justify-center"><Github size={24} className="text-white"/></div>
-                   <h2 className="text-3xl font-black tracking-tight text-white">GitHub <span className="text-pink-400">Uplink</span></h2>
+        ) : mode === AppMode.SHOP ? (
+          <div className="flex-1 p-20 overflow-y-auto">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                {packages.map((p, i) => (
+                  <div key={i} className="glass-tech p-10 rounded-[3rem] text-center group hover:border-pink-500/50 transition-all border-white/5">
+                     <PackageIcon size={48} className="mx-auto text-pink-500 mb-6 group-hover:scale-125 transition-transform"/>
+                     <h3 className="text-2xl font-black mb-2">{p.name}</h3>
+                     <div className="text-5xl font-black text-white my-6 tracking-tighter">{p.tokens} <span className="text-[10px] opacity-30 uppercase">Units</span></div>
+                     <button className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-black hover:bg-pink-600 transition-all">৳ {p.price}</button>
+                  </div>
+                ))}
+             </div>
+          </div>
+        ) : mode === AppMode.PROFILE ? (
+          <div className="flex-1 p-10 overflow-y-auto scroll-smooth">
+             <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4">
+                <div className="glass-tech p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative">
+                   <div className="w-40 h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl">
+                      <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[2rem]" alt="Profile"/>
+                   </div>
+                   <div className="text-center md:text-left space-y-2">
+                      <h2 className="text-5xl font-black text-white">{user.name}</h2>
+                      <span className="text-pink-400 font-bold text-xs bg-pink-500/5 px-3 py-1 rounded-lg border border-pink-500/10">{user.email}</span>
+                   </div>
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
+                      <div><div className="text-[10px] font-black uppercase text-slate-500">Units</div><div className="text-2xl font-black text-white">{user.tokens}</div></div>
+                   </div>
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Calendar size={24}/></div>
+                      <div><div className="text-[10px] font-black uppercase text-slate-500">Joined</div><div className="text-xl font-bold text-white">{new Date(user.joinedAt).toLocaleDateString()}</div></div>
+                   </div>
+                </div>
+             </div>
+          </div>
+        ) : mode === AppMode.SETTINGS ? (
+          <div className="flex-1 p-20 overflow-y-auto">
+             <div className="max-w-2xl mx-auto glass-tech p-16 rounded-[3rem] border-pink-500/20">
+                <div className="flex items-center gap-4 mb-10"><Github size={24} className="text-pink-500"/><h2 className="text-3xl font-black text-white">GitHub Config</h2></div>
                 <div className="space-y-6">
-                   <input type="password" value={githubConfig.token} onChange={e => setGithubConfig({...githubConfig, token: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-pink-400 outline-none" placeholder="Personal Access Token" />
+                   <input type="password" value={githubConfig.token} onChange={e => setGithubConfig({...githubConfig, token: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-pink-400" placeholder="GitHub PAT" />
                    <div className="grid grid-cols-2 gap-4">
                       <input type="text" value={githubConfig.owner} onChange={e => setGithubConfig({...githubConfig, owner: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="Username" />
                       <input type="text" value={githubConfig.repo} onChange={e => setGithubConfig({...githubConfig, repo: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="Repo Name" />
@@ -475,83 +672,17 @@ const App: React.FC = () => {
                 </div>
              </div>
           </div>
-        ) : mode === AppMode.SHOP ? (
-          <div className="flex-1 p-6 md:p-20 overflow-y-auto">
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                {(packages.length > 0 ? packages : [{ name: 'Starter', tokens: 50, price: 500 }, { name: 'Pro', tokens: 250, price: 1500 }, { name: 'Elite', tokens: 1000, price: 5000 }]).map((p, i) => (
-                  <div key={i} className="glass-tech p-10 rounded-[3rem] text-center group hover:border-pink-500/50 transition-all border-white/5">
-                     <PackageIcon size={48} className="mx-auto text-pink-500 mb-6 group-hover:scale-125 transition-transform"/>
-                     <h3 className="text-2xl font-black mb-2">{p.name}</h3>
-                     <div className="text-5xl font-black text-white my-6 tracking-tighter">{p.tokens} <span className="text-[10px] opacity-30 uppercase tracking-[0.3em]">Units</span></div>
-                     <button className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-black hover:bg-pink-600 transition-all shadow-xl">৳ {p.price}</button>
-                  </div>
-                ))}
-             </div>
-          </div>
-        ) : mode === AppMode.PROFILE ? (
-          <div className="flex-1 p-6 md:p-10 overflow-y-auto scroll-smooth">
-             <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-                <div className="glass-tech p-8 md:p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative overflow-hidden">
-                   <div className="absolute top-0 right-0 p-8">
-                      {user.is_verified && <div className="flex items-center gap-2 px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-full text-[10px] font-black uppercase text-pink-400 tracking-widest"><ShieldCheck size={14}/> Verified Pro</div>}
-                   </div>
-                   <div className="relative group">
-                      <div className="w-32 h-32 md:w-40 md:h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl transition-transform group-hover:scale-105 duration-300">
-                         <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[2rem]" alt="Profile"/>
-                      </div>
-                      <div className="absolute -bottom-2 -right-2 bg-pink-600 p-2 rounded-xl border-4 border-[#0a0110] shadow-lg"><Edit2 size={16} className="text-white"/></div>
-                   </div>
-                   <div className="text-center md:text-left space-y-2">
-                      <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white">{user.name}</h2>
-                      <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
-                         <span className="text-pink-400 font-bold text-xs bg-pink-500/5 px-3 py-1 rounded-lg border border-pink-500/10">{user.email}</span>
-                         {user.isAdmin && <span className="text-purple-400 font-bold text-xs bg-purple-500/5 px-3 py-1 rounded-lg border border-purple-500/10 uppercase tracking-tighter">System Lead</span>}
-                      </div>
-                   </div>
-                </div>
-                {/* Stats and Info Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
-                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
-                      <div>
-                         <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Available Units</div>
-                         <div className="text-2xl font-black text-white">{user.tokens}</div>
-                      </div>
-                   </div>
-                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
-                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Calendar size={24}/></div>
-                      <div>
-                         <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Joined Studio</div>
-                         <div className="text-xl font-bold text-white">{new Date(user.joinedAt).toLocaleDateString()}</div>
-                      </div>
-                   </div>
-                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
-                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Activity size={24}/></div>
-                      <div>
-                         <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Account Status</div>
-                         <div className="text-xl font-bold text-green-400">{user.is_banned ? 'Suspended' : 'Active'}</div>
-                      </div>
-                   </div>
-                </div>
-             </div>
-          </div>
         ) : null}
 
-        {/* --- MOBILE BOTTOM NAVIGATION --- */}
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0a0110]/95 backdrop-blur-3xl border-t border-pink-500/10 flex items-center justify-around p-2 pb-6 z-[100] animate-in slide-in-from-bottom duration-300">
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#0a0110]/95 backdrop-blur-3xl border-t border-pink-500/10 flex items-center justify-around p-2 pb-6 z-[100] animate-in slide-in-from-bottom">
           {[
             { id: AppMode.PREVIEW, icon: LayoutDashboard, label: 'Preview' },
             { id: AppMode.EDIT, icon: Code2, label: 'Edit' },
             { id: AppMode.SHOP, icon: ShoppingCart, label: 'Shop' },
             { id: AppMode.PROFILE, icon: UserIcon, label: 'Profile' }
           ].map((item) => (
-            <button 
-              key={item.id} 
-              onClick={() => setMode(item.id)}
-              className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl transition-all active:scale-90 ${mode === item.id ? 'text-pink-500' : 'text-slate-500'}`}
-            >
-              <item.icon size={18} strokeWidth={mode === item.id ? 3 : 2} />
-              <span className="text-[9px] font-black uppercase tracking-tighter">{item.label}</span>
+            <button key={item.id} onClick={() => setMode(item.id)} className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl transition-all ${mode === item.id ? 'text-pink-500' : 'text-slate-500'}`}>
+              <item.icon size={18} /><span className="text-[9px] font-black uppercase">{item.label}</span>
             </button>
           ))}
         </div>
