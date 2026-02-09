@@ -96,6 +96,14 @@ export class DatabaseService {
     return { data, error };
   }
 
+  async resendVerificationEmail(email: string) {
+    const { error } = await this.supabase.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
+    });
+    return { error };
+  }
+
   async updatePassword(newPassword: string) {
     const { error } = await this.supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
@@ -250,8 +258,9 @@ export class DatabaseService {
     try {
       const { data: txs } = await this.supabase
         .from('transactions')
-        .select('amount, status, package_id')
-        .eq('status', 'completed');
+        .select('amount, status, package_id, created_at')
+        .eq('status', 'completed')
+        .order('created_at', { ascending: true });
       
       const totalRevenue = txs?.reduce((acc, curr) => acc + (curr.amount || 0), 0) || 0;
 
@@ -261,6 +270,22 @@ export class DatabaseService {
         .from('users')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', today.toISOString());
+
+      // Prepare Chart Data (Last 7 Days)
+      const chartData: any[] = [];
+      const days = 7;
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toLocaleDateString();
+        const startOfDay = new Date(d.setHours(0,0,0,0)).toISOString();
+        const endOfDay = new Date(d.setHours(23,59,59,999)).toISOString();
+        
+        const dayRevenue = txs?.filter(t => t.created_at >= startOfDay && t.created_at <= endOfDay)
+                              .reduce((acc, curr) => acc + (curr.amount || 0), 0) || 0;
+        
+        chartData.push({ name: dateStr, revenue: dayRevenue });
+      }
 
       const pkgCounts: Record<string, number> = {};
       txs?.forEach(t => {
@@ -286,10 +311,11 @@ export class DatabaseService {
         totalRevenue,
         usersToday: usersToday || 0,
         topPackage: topPkgName,
-        salesCount: maxCount
+        salesCount: maxCount,
+        chartData
       };
     } catch (e) {
-      return { totalRevenue: 0, usersToday: 0, topPackage: 'N/A', salesCount: 0 };
+      return { totalRevenue: 0, usersToday: 0, topPackage: 'N/A', salesCount: 0, chartData: [] };
     }
   }
 

@@ -11,6 +11,7 @@ import {
   Trophy, Star, Award, Layers, Target, Code2, Sparkles, BrainCircuit, ShieldEllipsis, 
   Fingerprint as BioIcon, Camera, Laptop, Tablet, Menu, Smartphone as MobileIcon, Eye as ViewIcon, ExternalLink, Calendar, Coins, CheckCircle
 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { AppMode, ChatMessage, User as UserType, GithubConfig, Package, Transaction, ActivityLog } from './types';
 import { GeminiService } from './services/geminiService';
 import { DatabaseService } from './services/dbService';
@@ -195,7 +196,7 @@ const AdminLoginPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = (
 // --- ADMIN PANEL COMPONENT ---
 const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'payments' | 'packages' | 'logs'>('stats');
-  const [stats, setStats] = useState({ totalRevenue: 0, usersToday: 0, topPackage: 'N/A', salesCount: 0 });
+  const [stats, setStats] = useState({ totalRevenue: 0, usersToday: 0, topPackage: 'N/A', salesCount: 0, chartData: [] as any[] });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [adminUsers, setAdminUsers] = useState<UserType[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
@@ -219,7 +220,10 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'stats') setStats(await db.getAdminStats());
+      if (activeTab === 'stats') {
+          const res = await db.getAdminStats();
+          setStats(res as any);
+      }
       if (activeTab === 'payments') setTransactions(await db.getAdminTransactions());
       if (activeTab === 'packages') setPackages(await db.getPackages());
       if (activeTab === 'logs') setActivityLogs(await db.getActivityLogs());
@@ -237,7 +241,6 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
     try {
       const success = await db.approveTransaction(txId);
       if (success) {
-        // Automatic logging is now handled by DB Triggers, but we keep this for extra context if needed
         await db.logActivity(user.email, 'PAYMENT_APPROVE', `Approved TX: ${txId}`);
         loadData();
       }
@@ -256,7 +259,6 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   const handleBanToggle = async (uid: string, email: string, currentStatus: boolean) => {
     if (!confirm(`${currentStatus ? 'Unsuspend' : 'Suspend'} user ${email}?`)) return;
     await db.supabase.from('users').update({ is_banned: !currentStatus }).eq('id', uid);
-    // Logging is automatic via DB triggers
     loadData();
   };
 
@@ -264,7 +266,6 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
     if (!editingUser) return;
     try {
       await db.supabase.from('users').update({ tokens: newTokenCount }).eq('id', editingUser.id);
-      // Logging is automatic via DB triggers
       setEditingUser(null);
       loadData();
     } catch (e: any) { alert(e.message); }
@@ -415,6 +416,50 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                       <div className="text-3xl font-black text-white mt-2 tracking-tighter">{s.value}</div>
                     </div>
                   ))}
+                </div>
+
+                {/* --- Advanced Charts --- */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                   <div className="glass-tech p-8 rounded-[3rem] border-white/5 h-[400px]">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-6 flex items-center gap-2">
+                        <TrendingUp size={14} className="text-green-400"/> Revenue Trend (Last 7 Days)
+                      </h3>
+                      <ResponsiveContainer width="100%" height="80%">
+                        <AreaChart data={stats.chartData}>
+                          <defs>
+                            <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#ff2d75" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="#ff2d75" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                          <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#1a1025', border: '1px solid rgba(255,45,117,0.2)', borderRadius: '12px', fontSize: '10px' }}
+                            itemStyle={{ color: '#ff2d75', fontWeight: 'bold' }}
+                          />
+                          <Area type="monotone" dataKey="revenue" stroke="#ff2d75" fillOpacity={1} fill="url(#colorRev)" strokeWidth={3} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                   </div>
+                   <div className="glass-tech p-8 rounded-[3rem] border-white/5 h-[400px]">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-6 flex items-center gap-2">
+                        <Activity size={14} className="text-pink-400"/> Activity Levels
+                      </h3>
+                      <ResponsiveContainer width="100%" height="80%">
+                        <BarChart data={stats.chartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                          <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                          <Tooltip 
+                            cursor={{fill: 'rgba(255,255,255,0.05)'}}
+                            contentStyle={{ backgroundColor: '#1a1025', border: '1px solid rgba(255,45,117,0.2)', borderRadius: '12px', fontSize: '10px' }}
+                          />
+                          <Bar dataKey="revenue" fill="#ff2d75" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                   </div>
                 </div>
               </div>
             )}
@@ -581,6 +626,7 @@ const App: React.FC = () => {
   const [logoClicks, setLogoClicks] = useState(0);
   const [packages, setPackages] = useState<Package[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   
   // Payment Flow States
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
@@ -601,36 +647,29 @@ const App: React.FC = () => {
   const db = DatabaseService.getInstance();
   const github = useRef(new GithubService());
 
-  // Real-time Update Listener for Users and Transactions
   useEffect(() => {
     if (user?.id) {
-      // User Update Listener (Tokens)
       const userChannel = db.supabase
         .channel(`user_updates_${user.id}`)
         .on('postgres_changes', 
           { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, 
           (payload) => {
             if (payload.new && (payload.new as any).tokens !== undefined) {
-              setUser(prev => prev ? { ...prev, tokens: (payload.new as any).tokens } : null);
+              setUser(prev => prev ? { ...prev, tokens: (payload.new as any).tokens, is_verified: (payload.new as any).is_verified } : null);
             }
           }
         )
         .subscribe();
 
-      // Transaction Status Change Listener for Notifications
       const txChannel = db.supabase
         .channel(`tx_updates_${user.id}`)
         .on('postgres_changes',
           { event: '*', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` },
           (payload) => {
             const newTx = payload.new as Transaction;
-            
-            // ইফ ইউজার প্রোফাইল পেজে থাকে, ট্রানজেকশন লিস্ট আপডেট করো
             if (mode === AppMode.PROFILE) {
               db.getUserTransactions(user.id).then(setUserTransactions);
             }
-
-            // যদি স্ট্যাটাস পরিবর্তন হয়ে 'completed' হয়, তবে এলার্ট দেখাও
             if (newTx && newTx.status === 'completed') {
               setApprovalNotify({ show: true, amount: newTx.amount });
             }
@@ -667,6 +706,20 @@ const App: React.FC = () => {
   useEffect(() => { if (logoClicks >= 3) { setMode(AppMode.ADMIN); setLogoClicks(0); } }, [logoClicks]);
 
   const handleLogout = async () => { await db.signOut(); setUser(null); setIsScanned(false); };
+
+  const handleResendVerification = async () => {
+    if (!user) return;
+    setIsResending(true);
+    try {
+        const { error } = await db.resendVerificationEmail(user.email);
+        if (error) throw error;
+        alert("ভেরিফিকেশন ইমেইল পুনরায় পাঠানো হয়েছে। আপনার ইনবক্স চেক করুন।");
+    } catch (e: any) {
+        alert(e.message || "ইমেইল পাঠাতে সমস্যা হয়েছে।");
+    } finally {
+        setIsResending(false);
+    }
+  };
 
   const handlePasswordChange = async () => {
     if (!oldPassword || !newPass) { setPassError('অনুগ্রহ করে সব ঘর পূরণ করুন'); return; }
@@ -835,6 +888,25 @@ const App: React.FC = () => {
 
   return (
     <div className="h-[100dvh] flex flex-col text-slate-100 bg-[#0a0110] overflow-hidden">
+      {/* --- User Verification Notice UI --- */}
+      {user && !user.is_verified && (
+          <div className="bg-gradient-to-r from-pink-600 to-rose-600 text-white px-4 py-2.5 flex items-center justify-center gap-3 md:gap-6 animate-in slide-in-from-top duration-700 z-[100] shadow-2xl">
+              <div className="flex items-center gap-2">
+                  <Mail size={16} className="animate-bounce" />
+                  <p className="text-[10px] md:text-xs font-black uppercase tracking-widest">
+                    আপনার ইমেইলটি এখনও ভেরিফাই করা হয়নি!
+                  </p>
+              </div>
+              <button 
+                onClick={handleResendVerification} 
+                disabled={isResending}
+                className="px-4 py-1.5 bg-white text-pink-600 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-tighter hover:bg-pink-100 transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                  {isResending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} পুনরায় পাঠান
+              </button>
+          </div>
+      )}
+
       {/* Real-time Approval Notification */}
       {approvalNotify && approvalNotify.show && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-2xl animate-in fade-in duration-500">
