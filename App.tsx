@@ -685,13 +685,19 @@ const App: React.FC = () => {
   }, [user?.id, mode]);
 
   useEffect(() => {
-    db.getCurrentSession().then(async session => {
-      if (session?.user) {
-        const userData = await db.getUser(session.user.email || '', session.user.id);
-        if (userData) { setUser(userData); setIsScanned(true); }
-      }
-      setAuthLoading(false);
-    });
+    const checkSession = async () => {
+        const session = await db.getCurrentSession();
+        if (session?.user) {
+          const userData = await db.getUser(session.user.email || '', session.user.id);
+          if (userData) { 
+              setUser(userData); 
+              setIsScanned(true); 
+              if (userData.isAdmin) setMode(AppMode.ADMIN);
+          }
+        }
+        setAuthLoading(false);
+    };
+    checkSession();
     db.getPackages().then(pkgs => pkgs.length > 0 && setPackages(pkgs));
     const savedGit = localStorage.getItem('github_config');
     if (savedGit) setGithubConfig(JSON.parse(savedGit));
