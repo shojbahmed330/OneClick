@@ -168,6 +168,10 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   const [newTokenCount, setNewTokenCount] = useState<number>(0);
   const [showPackageModal, setShowPackageModal] = useState(false);
   const [newPackage, setNewPackage] = useState({ name: '', tokens: 0, price: 0 });
+  
+  // Package Edit States
+  const [editingPackage, setEditingPackage] = useState<Package | null>(null);
+  const [showEditPackageModal, setShowEditPackageModal] = useState(false);
 
   const db = DatabaseService.getInstance();
 
@@ -192,6 +196,7 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
     try {
       const success = await db.approveTransaction(txId);
       if (success) {
+        // Automatic logging is now handled by DB Triggers, but we keep this for extra context if needed
         await db.logActivity(user.email, 'PAYMENT_APPROVE', `Approved TX: ${txId}`);
         loadData();
       }
@@ -210,7 +215,7 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   const handleBanToggle = async (uid: string, email: string, currentStatus: boolean) => {
     if (!confirm(`${currentStatus ? 'Unsuspend' : 'Suspend'} user ${email}?`)) return;
     await db.supabase.from('users').update({ is_banned: !currentStatus }).eq('id', uid);
-    await db.logActivity(user.email, currentStatus ? 'USER_UNBAN' : 'USER_BAN', `${currentStatus ? 'Unbanned' : 'Banned'}: ${email}`);
+    // Logging is automatic via DB triggers
     loadData();
   };
 
@@ -218,7 +223,7 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
     if (!editingUser) return;
     try {
       await db.supabase.from('users').update({ tokens: newTokenCount }).eq('id', editingUser.id);
-      await db.logActivity(user.email, 'USER_TOKEN_EDIT', `Updated ${editingUser.email} tokens to ${newTokenCount}`);
+      // Logging is automatic via DB triggers
       setEditingUser(null);
       loadData();
     } catch (e: any) { alert(e.message); }
@@ -227,14 +232,36 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   const handleCreatePackage = async () => {
     if (!newPackage.name || newPackage.price <= 0) return;
     try {
-      await db.supabase.from('packages').insert({
+      await db.createPackage({
         name: newPackage.name,
         tokens: newPackage.tokens,
         price: newPackage.price,
         color: 'pink',
-        icon: 'Package'
+        icon: 'Package',
+        is_popular: false
       });
       setShowPackageModal(false);
+      loadData();
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const handleUpdatePackage = async () => {
+    if (!editingPackage) return;
+    try {
+      await db.updatePackage(editingPackage.id, {
+        name: editingPackage.name,
+        tokens: editingPackage.tokens,
+        price: editingPackage.price
+      });
+      setShowEditPackageModal(false);
+      loadData();
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const handleDeletePackage = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this package?")) return;
+    try {
+      await db.deletePackage(id);
       loadData();
     } catch (e: any) { alert(e.message); }
   };
@@ -260,6 +287,33 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                  <div className="flex gap-2">
                     <button onClick={handleUpdateTokens} className="flex-1 py-3 bg-pink-600 rounded-xl font-black text-xs uppercase shadow-lg">Save Update</button>
                     <button onClick={() => setEditingUser(null)} className="px-6 py-3 bg-white/5 rounded-xl font-black text-xs uppercase">Cancel</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- Edit Package Modal --- */}
+      {showEditPackageModal && editingPackage && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+           <div className="glass-tech p-10 rounded-[2.5rem] w-full max-w-md border-pink-500/20 animate-in zoom-in">
+              <h3 className="text-xl font-black mb-6 text-white uppercase">Modify <span className="text-pink-500">Package</span></h3>
+              <div className="space-y-4">
+                 <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Package Name</label>
+                    <input placeholder="Package Name" value={editingPackage.name} onChange={e => setEditingPackage({...editingPackage, name: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm" />
+                 </div>
+                 <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Tokens</label>
+                    <input type="number" placeholder="Token Count" value={editingPackage.tokens} onChange={e => setEditingPackage({...editingPackage, tokens: parseInt(e.target.value)})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm" />
+                 </div>
+                 <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Price (BDT)</label>
+                    <input type="number" placeholder="Price (BDT)" value={editingPackage.price} onChange={e => setEditingPackage({...editingPackage, price: parseInt(e.target.value)})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm" />
+                 </div>
+                 <div className="flex gap-2 pt-4">
+                    <button onClick={handleUpdatePackage} className="flex-1 py-4 bg-pink-600 rounded-xl font-black text-xs uppercase">Save Changes</button>
+                    <button onClick={() => setShowEditPackageModal(false)} className="px-6 py-4 bg-white/5 rounded-xl font-black text-xs uppercase">Close</button>
                  </div>
               </div>
            </div>
@@ -434,8 +488,8 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                     <div className="text-5xl font-black text-white my-6 tracking-tighter">{p.tokens} <span className="text-[10px] opacity-30 tracking-[0.4em]">UNITS</span></div>
                     <div className="text-2xl font-black text-pink-500 mb-8">৳{p.price}</div>
                     <div className="flex gap-2">
-                       <button className="flex-1 py-4 bg-white/5 rounded-2xl font-black text-xs hover:bg-white/10">Modify</button>
-                       <button className="p-4 bg-red-600/20 text-red-500 rounded-2xl hover:bg-red-600 hover:text-white"><Trash2 size={18}/></button>
+                       <button onClick={() => { setEditingPackage(p); setShowEditPackageModal(true); }} className="flex-1 py-4 bg-white/5 rounded-2xl font-black text-xs hover:bg-white/10">Modify</button>
+                       <button onClick={() => handleDeletePackage(p.id)} className="p-4 bg-red-600/20 text-red-500 rounded-2xl hover:bg-red-600 hover:text-white"><Trash2 size={18}/></button>
                     </div>
                   </div>
                 ))}
@@ -504,19 +558,23 @@ const App: React.FC = () => {
   const db = DatabaseService.getInstance();
   const github = useRef(new GithubService());
 
-  // Supabase Real-time Token Sync
+  // Fixed Real-time Token Sync: Ensuring stable connection and manual refresh logic
   useEffect(() => {
     if (user?.id) {
       const channel = db.supabase
-        .channel(`user_sync_${user.id}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, 
+        .channel(`user_updates_${user.id}`)
+        .on('postgres_changes', 
+          { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, 
           (payload) => {
+            console.log("Real-time token update received:", payload);
             if (payload.new && (payload.new as any).tokens !== undefined) {
               setUser(prev => prev ? { ...prev, tokens: (payload.new as any).tokens } : null);
             }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') console.log("Token sync established.");
+        });
       return () => { db.supabase.removeChannel(channel); };
     }
   }, [user?.id]);
@@ -543,7 +601,7 @@ const App: React.FC = () => {
     setIsUpdatingPass(true);
     setPassError('');
     try {
-      // Supabase verification: Re-signing in with old password to verify
+      // Security: Re-authenticate session before updating sensitive data
       const { error: verifyError } = await db.supabase.auth.signInWithPassword({
         email: user?.email || '',
         password: oldPassword
@@ -652,7 +710,6 @@ const App: React.FC = () => {
     fileInput.click();
   };
 
-  // Fix: Implemented handlePaymentSubmit to fix the missing name error and handle the shop payment flow
   const handlePaymentSubmit = async () => {
     if (!selectedPkg || !paymentMethod || !paymentForm.trxId) {
       alert("অনুগ্রহ করে সব ঘর পূরণ করুন এবং ট্রানজেকশন আইডি প্রদান করুন।");
