@@ -180,11 +180,14 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
   useEffect(() => { loadData(); }, [activeTab]);
 
   const handleApprove = async (txId: string) => {
-    if (!confirm("Approve this payment? Tokens will be added instantly.")) return;
+    if (!confirm("Approve this payment? Tokens will be added instantly to the user's account.")) return;
     try {
-      await db.approveTransaction(txId);
-      await db.logActivity(user.email, 'PAYMENT_APPROVE', `Approved TX: ${txId}`);
-      loadData();
+      const success = await db.approveTransaction(txId);
+      if (success) {
+        await db.logActivity(user.email, 'PAYMENT_APPROVE', `Approved TX: ${txId}`);
+        alert("Payment Approved! Tokens synchronized.");
+        loadData();
+      }
     } catch (e: any) { alert(e.message); }
   };
 
@@ -260,7 +263,7 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                       <th className="p-6">User/Email</th>
                       <th className="p-6">Amount</th>
                       <th className="p-6">Method/Trx</th>
-                      <th className="p-6">Proof</th>
+                      <th className="p-6">Details</th>
                       <th className="p-6">Action</th>
                     </tr>
                   </thead>
@@ -271,7 +274,8 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                         <td className="p-6 font-black text-white">৳{tx.amount}</td>
                         <td className="p-6"><span className="text-pink-400 font-mono">{tx.payment_method}</span><br/><span className="opacity-50">{tx.trx_id}</span></td>
                         <td className="p-6">
-                          {tx.screenshot_url ? <a href={tx.screenshot_url} target="_blank" className="text-blue-400 hover:underline">View Image</a> : 'No Proof'}
+                          <div className="max-w-[200px] truncate opacity-60 mb-2">{tx.message || 'No Message'}</div>
+                          {tx.screenshot_url ? <a href={tx.screenshot_url} target="_blank" className="text-blue-400 hover:underline flex items-center gap-1"><Upload size={12}/> View Image</a> : <span className="opacity-30">No Proof</span>}
                         </td>
                         <td className="p-6">
                           {tx.status === 'pending' ? (
@@ -386,6 +390,13 @@ const App: React.FC = () => {
   const [logoClicks, setLogoClicks] = useState(0);
   const [packages, setPackages] = useState<Package[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+  
+  // Payment Flow States
+  const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
+  const [paymentStep, setPaymentStep] = useState<'methods' | 'form' | 'success' | 'idle'>('idle');
+  const [paymentMethod, setPaymentMethod] = useState<'Bkash' | 'Nagad' | 'Rocket' | null>(null);
+  const [paymentForm, setPaymentForm] = useState({ trxId: '', screenshot: '', message: '' });
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
 
   const gemini = useRef(new GeminiService());
   const db = DatabaseService.getInstance();
@@ -453,6 +464,24 @@ const App: React.FC = () => {
       a.href = url; a.download = `${githubConfig.repo}-build.zip`;
       document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url);
     } catch (e: any) { alert("Download failed: " + e.message); } finally { setIsDownloading(false); }
+  };
+
+  const handlePaymentSubmit = async () => {
+    if (!selectedPkg || !paymentMethod || !paymentForm.trxId) { alert("Please fill the Transaction ID (TrxID)."); return; }
+    setPaymentSubmitting(true);
+    try {
+      const success = await db.submitPaymentRequest(user!.id, selectedPkg.id, selectedPkg.price, paymentMethod, paymentForm.trxId, paymentForm.screenshot, paymentForm.message);
+      if (success) setPaymentStep('success');
+    } catch (e: any) { alert("Submission failed: " + e.message); } finally { setPaymentSubmitting(false); }
+  };
+
+  const handleAvatarUpload = async () => {
+    const url = prompt("Enter Image URL for profile avatar:");
+    if (url && user) {
+      await db.updateUserAvatar(user.id, url);
+      const updated = await db.getUser(user.email, user.id);
+      if (updated) setUser(updated);
+    }
   };
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0a0110] text-[#ff2d75]"><Loader2 className="animate-spin" size={40}/></div>;
@@ -571,6 +600,111 @@ const App: React.FC = () => {
                <button onClick={() => setMobileTab('preview')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.5)]' : 'text-slate-400'}`}>Visual</button>
             </div>
           </div>
+        ) : mode === AppMode.SHOP ? (
+          <div className="flex-1 p-6 md:p-20 overflow-y-auto">
+             {paymentStep === 'idle' ? (
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                {packages.map((p, i) => (
+                  <div key={i} className="glass-tech p-10 rounded-[3rem] text-center group hover:border-pink-500/50 transition-all border-white/5">
+                     <PackageIcon size={48} className="mx-auto text-pink-500 mb-6 group-hover:scale-125 transition-transform"/>
+                     <h3 className="text-2xl font-black mb-2">{p.name}</h3>
+                     <div className="text-5xl font-black text-white my-6 tracking-tighter">{p.tokens} <span className="text-[10px] opacity-30 uppercase">Units</span></div>
+                     <button onClick={() => { setSelectedPkg(p); setPaymentStep('methods'); }} className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-black hover:bg-pink-600 transition-all">৳ {p.price}</button>
+                  </div>
+                ))}
+               </div>
+             ) : paymentStep === 'methods' ? (
+               <div className="max-w-md mx-auto glass-tech p-10 rounded-[3rem] animate-in zoom-in">
+                  <h3 className="text-2xl font-black mb-8 text-center">Select <span className="text-pink-500">Method</span></h3>
+                  <div className="space-y-4">
+                     {[
+                       { id: 'Bkash', color: 'bg-[#e2136e]' },
+                       { id: 'Nagad', color: 'bg-[#f6921e]' },
+                       { id: 'Rocket', color: 'bg-[#8c3494]' }
+                     ].map(m => (
+                       <button key={m.id} onClick={() => { setPaymentMethod(m.id as any); setPaymentStep('form'); }} className={`w-full p-6 ${m.color} rounded-2xl flex items-center justify-between shadow-xl active:scale-95 transition-transform`}>
+                          <span className="font-black uppercase">{m.id}</span>
+                          <span className="text-xs opacity-90 font-mono">01721013902</span>
+                       </button>
+                     ))}
+                     <button onClick={() => setPaymentStep('idle')} className="w-full py-4 text-slate-500 text-xs font-black uppercase">Cancel</button>
+                  </div>
+               </div>
+             ) : paymentStep === 'form' ? (
+               <div className="max-w-md mx-auto glass-tech p-10 rounded-[3rem] animate-in zoom-in">
+                  <h3 className="text-2xl font-black mb-2">{paymentMethod} <span className="text-pink-500">Gateway</span></h3>
+                  <div className="bg-pink-500/10 p-4 rounded-2xl border border-pink-500/20 mb-6">
+                    <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Send Money To:</p>
+                    <p className="text-2xl font-black text-white tracking-widest">01721013902</p>
+                    <p className="text-[10px] text-pink-400/80 mt-1">Amount: <span className="font-black">৳{selectedPkg?.price}</span></p>
+                  </div>
+                  <div className="space-y-4">
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Transaction ID (TrxID)</label>
+                        <input required value={paymentForm.trxId} onChange={e => setPaymentForm({...paymentForm, trxId: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-pink-500/50 outline-none" placeholder="Enter TrxID here" />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Proof/Screenshot URL</label>
+                        <input value={paymentForm.screenshot} onChange={e => setPaymentForm({...paymentForm, screenshot: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-pink-500/50 outline-none" placeholder="Image URL (ImgBB/Lightshot)" />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Message to Admin</label>
+                        <textarea value={paymentForm.message} onChange={e => setPaymentForm({...paymentForm, message: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-sm h-20 resize-none outline-none" placeholder="Optional notes..." />
+                     </div>
+                     <button disabled={paymentSubmitting} onClick={handlePaymentSubmit} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all disabled:opacity-50">
+                        {paymentSubmitting ? <Loader2 className="animate-spin mx-auto"/> : 'Securely Send Proof'}
+                     </button>
+                     <button onClick={() => setPaymentStep('methods')} className="w-full py-2 text-slate-500 text-xs font-black uppercase">Back to Methods</button>
+                  </div>
+               </div>
+             ) : (
+               <div className="max-w-md mx-auto glass-tech p-16 rounded-[3rem] text-center animate-in zoom-in">
+                  <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(34,197,94,0.3)]"><Check size={40}/></div>
+                  <h3 className="text-3xl font-black mb-4 text-white uppercase tracking-tighter">Request Sent</h3>
+                  <p className="text-sm text-slate-400 leading-relaxed mb-8">Admin will verify your TrxID. Once confirmed, <span className="text-pink-400 font-bold">{selectedPkg?.tokens} Units</span> will be added to your account instantly.</p>
+                  <button onClick={() => setPaymentStep('idle')} className="px-10 py-4 bg-pink-600 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95">Complete Process</button>
+               </div>
+             )}
+          </div>
+        ) : mode === AppMode.PROFILE ? (
+          <div className="flex-1 p-10 overflow-y-auto scroll-smooth">
+             <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4">
+                <div className="glass-tech p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative">
+                   <div className="relative group cursor-pointer" onClick={handleAvatarUpload}>
+                      <div className="w-40 h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl overflow-hidden bg-slate-800">
+                        <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[2rem]" alt="Profile"/>
+                      </div>
+                      <div className="absolute inset-0 bg-black/60 rounded-[2.5rem] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                        <div className="flex flex-col items-center gap-2">
+                           <Upload size={24} className="text-white"/>
+                           <span className="text-[10px] font-black uppercase text-white tracking-widest">Update</span>
+                        </div>
+                      </div>
+                   </div>
+                   <div className="text-center md:text-left space-y-2">
+                      <h2 className="text-5xl font-black text-white tracking-tight">{user.name}</h2>
+                      <div className="flex items-center gap-2 justify-center md:justify-start">
+                         <span className="text-pink-400 font-bold text-xs bg-pink-500/5 px-3 py-1 rounded-lg border border-pink-500/10">{user.email}</span>
+                         {user.is_verified && <div className="text-blue-400 bg-blue-500/10 p-1.5 rounded-full"><ShieldCheck size={14}/></div>}
+                      </div>
+                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
+                      <div><div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Available Units</div><div className="text-2xl font-black text-white">{user.tokens}</div></div>
+                   </div>
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Calendar size={24}/></div>
+                      <div><div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Joined Terminal</div><div className="text-xl font-bold text-white">{new Date(user.joinedAt).toLocaleDateString()}</div></div>
+                   </div>
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><ShieldCheck size={24}/></div>
+                      <div><div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">System Role</div><div className="text-xl font-bold text-white">{user.isAdmin ? 'Admin' : 'Developer'}</div></div>
+                   </div>
+                </div>
+             </div>
+          </div>
         ) : mode === AppMode.EDIT ? (
           <div className="flex-1 flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
             {buildStatus.status === 'idle' ? (
@@ -620,43 +754,6 @@ const App: React.FC = () => {
                  </div>
               </div>
             )}
-          </div>
-        ) : mode === AppMode.SHOP ? (
-          <div className="flex-1 p-20 overflow-y-auto">
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                {packages.map((p, i) => (
-                  <div key={i} className="glass-tech p-10 rounded-[3rem] text-center group hover:border-pink-500/50 transition-all border-white/5">
-                     <PackageIcon size={48} className="mx-auto text-pink-500 mb-6 group-hover:scale-125 transition-transform"/>
-                     <h3 className="text-2xl font-black mb-2">{p.name}</h3>
-                     <div className="text-5xl font-black text-white my-6 tracking-tighter">{p.tokens} <span className="text-[10px] opacity-30 uppercase">Units</span></div>
-                     <button className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-black hover:bg-pink-600 transition-all">৳ {p.price}</button>
-                  </div>
-                ))}
-             </div>
-          </div>
-        ) : mode === AppMode.PROFILE ? (
-          <div className="flex-1 p-10 overflow-y-auto scroll-smooth">
-             <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4">
-                <div className="glass-tech p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative">
-                   <div className="w-40 h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl">
-                      <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[2rem]" alt="Profile"/>
-                   </div>
-                   <div className="text-center md:text-left space-y-2">
-                      <h2 className="text-5xl font-black text-white">{user.name}</h2>
-                      <span className="text-pink-400 font-bold text-xs bg-pink-500/5 px-3 py-1 rounded-lg border border-pink-500/10">{user.email}</span>
-                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
-                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
-                      <div><div className="text-[10px] font-black uppercase text-slate-500">Units</div><div className="text-2xl font-black text-white">{user.tokens}</div></div>
-                   </div>
-                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4">
-                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Calendar size={24}/></div>
-                      <div><div className="text-[10px] font-black uppercase text-slate-500">Joined</div><div className="text-xl font-bold text-white">{new Date(user.joinedAt).toLocaleDateString()}</div></div>
-                   </div>
-                </div>
-             </div>
           </div>
         ) : mode === AppMode.SETTINGS ? (
           <div className="flex-1 p-20 overflow-y-auto">
