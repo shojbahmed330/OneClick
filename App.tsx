@@ -164,7 +164,7 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
   const [projectFiles, setProjectFiles] = useState<Record<string, string>>({
-    'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75; text-align:center;"><h1>OneClick Studio</h1></div>'
+    'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75; text-align:center; padding: 20px;"><h1>OneClick Studio</h1></div>'
   });
   const [selectedFile, setSelectedFile] = useState('index.html');
   
@@ -220,7 +220,6 @@ const App: React.FC = () => {
       const res = await gemini.current.generateWebsite(text, projectFiles, messages);
       if (res.files) {
         setProjectFiles(prev => ({ ...prev, ...res.files }));
-        // Show project created toast
         setShowCompletion(true);
         setTimeout(() => setShowCompletion(false), 4000);
       }
@@ -318,63 +317,69 @@ const App: React.FC = () => {
       <main className="flex-1 flex overflow-hidden relative pb-20 md:pb-0">
         {mode === AppMode.PREVIEW ? (
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
-            <section className={`w-full lg:w-[450px] border-r border-pink-500/10 flex flex-col bg-[#01040f]/50 backdrop-blur-xl h-full ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'}`}>
-              <div className="flex-1 p-6 overflow-y-auto code-scroll space-y-6 pb-32">
-                {messages.length > 0 ? messages.map(m => (
-                  <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2`}>
-                    {m.role === 'assistant' && (
-                      <div className="flex items-center gap-2 mb-2 ml-2">
-                        <div className="w-5 h-5 bg-pink-600 rounded-lg flex items-center justify-center shadow-lg"><Sparkles size={10} className="text-white"/></div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-pink-500">Neural Assistant</span>
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col lg:flex-row h-full">
+              {/* Chat Section */}
+              <section className={`w-full lg:w-[450px] border-r border-pink-500/10 flex flex-col bg-[#01040f]/50 backdrop-blur-xl h-full ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'}`}>
+                <div className="flex-1 p-6 overflow-y-auto code-scroll space-y-6 pb-40">
+                  {messages.length > 0 ? messages.map(m => (
+                    <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-2`}>
+                      {m.role === 'assistant' && (
+                        <div className="flex items-center gap-2 mb-2 ml-2">
+                          <div className="w-5 h-5 bg-pink-600 rounded-lg flex items-center justify-center shadow-lg"><Sparkles size={10} className="text-white"/></div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-pink-500">Neural Assistant</span>
+                        </div>
+                      )}
+                      <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.3)]' : 'bg-slate-900/90 border border-pink-500/20 text-slate-100 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] relative overflow-hidden group'}`}>
+                        {m.role === 'assistant' && <div className="absolute inset-0 shimmer-pink opacity-5 group-hover:opacity-10 pointer-events-none"></div>}
+                        {m.content}
                       </div>
-                    )}
-                    <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed ${m.role === 'user' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.3)]' : 'bg-slate-900/90 border border-pink-500/20 text-slate-100 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] relative overflow-hidden group'}`}>
-                      {m.role === 'assistant' && <div className="absolute inset-0 shimmer-pink opacity-5 group-hover:opacity-10 pointer-events-none"></div>}
-                      {m.content}
                     </div>
-                  </div>
-                )) : (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-10 opacity-30">
-                     <BrainCircuit size={64} className="mb-6 text-pink-400 animate-pulse"/>
-                     <p className="text-xs font-black uppercase tracking-[0.4em]">Neural Core Online</p>
-                  </div>
-                )}
-                {isGenerating && (
-                  <div className="flex items-center gap-4 text-pink-400 p-4 animate-pulse">
-                     <Loader2 className="animate-spin" size={16}/>
-                     <span className="text-[10px] font-black uppercase tracking-widest">Synthesizing Core Data...</span>
-                  </div>
-                )}
-              </div>
-              <div className="p-6 absolute bottom-0 w-full lg:w-[450px] bg-gradient-to-t from-[#0a0110] to-transparent">
-                <div className="relative glass-tech rounded-[2rem] p-2 flex items-center gap-2 border-white/10">
-                   <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Describe your dream app..." className="flex-1 bg-transparent p-4 text-xs h-16 outline-none text-white resize-none" />
-                   <button onClick={handleSend} disabled={isGenerating} className="p-4 bg-pink-600 rounded-2xl text-white shadow-lg active:scale-90 transition-transform"><Send size={18}/></button>
+                  )) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-10 opacity-30">
+                       <BrainCircuit size={64} className="mb-6 text-pink-400 animate-pulse"/>
+                       <p className="text-xs font-black uppercase tracking-[0.4em]">Neural Core Online</p>
+                    </div>
+                  )}
+                  {isGenerating && (
+                    <div className="flex items-center gap-4 text-pink-400 p-4 animate-pulse">
+                       <Loader2 className="animate-spin" size={16}/>
+                       <span className="text-[10px] font-black uppercase tracking-widest">Synthesizing Core Data...</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </section>
-            
-            <section className={`flex-1 flex flex-col items-center justify-start md:justify-center p-4 md:p-4 relative overflow-y-auto md:overflow-hidden ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
-              <div className="absolute inset-0 bg-grid opacity-30 pointer-events-none"></div>
-              
-              <div className="relative z-10 w-full max-w-[310px] md:max-w-[360px] aspect-[9/18.5] md:h-[720px] bg-slate-900 rounded-[2.5rem] md:rounded-[3.5rem] border-[6px] md:border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col mt-4 md:mt-0 transition-transform duration-500">
-                 <div className="h-6 md:h-8 w-full flex items-center justify-center"><div className="w-16 md:w-20 h-4 md:h-5 bg-slate-800 rounded-b-xl"></div></div>
-                 <iframe srcDoc={projectFiles['index.html']} className="flex-1 w-full bg-white" title="preview" />
-                 <div className="h-8 md:h-10 w-full flex items-center justify-center gap-6 md:gap-8 bg-slate-800/20 backdrop-blur-md">
-                    <button className="text-slate-500"><Circle size={12}/></button>
-                    <button className="text-slate-500"><Square size={12}/></button>
-                 </div>
-              </div>
-              
-              <button onClick={() => { setMode(AppMode.EDIT); handleBuildAPK(); }} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30 hidden lg:flex">
-                <Rocket size={18}/> Build Android APK
-              </button>
-            </section>
+                <div className="p-6 absolute bottom-0 w-full lg:w-[450px] bg-gradient-to-t from-[#0a0110] via-[#0a0110]/95 to-transparent z-[80] md:z-10">
+                  <div className="relative glass-tech rounded-[2rem] p-2 flex items-center gap-2 border-white/10 mb-20 md:mb-0">
+                     <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Describe your dream app..." className="flex-1 bg-transparent p-4 text-xs h-16 outline-none text-white resize-none" />
+                     <button onClick={handleSend} disabled={isGenerating} className="p-4 bg-pink-600 rounded-2xl text-white shadow-lg active:scale-90 transition-transform"><Send size={18}/></button>
+                  </div>
+                </div>
+              </section>
 
-            {/* Mobile Chat/Preview Toggle - Outside sections to be visible everywhere */}
-            <div className="lg:hidden fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 flex gap-1 z-[120] shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-               <button onClick={() => setMobileTab('chat')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>Chat</button>
-               <button onClick={() => setMobileTab('preview')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>Visual</button>
+              {/* Preview Section */}
+              <section className={`flex-1 flex flex-col items-center justify-center p-4 md:p-4 relative h-full ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
+                <div className="absolute inset-0 bg-grid opacity-30 pointer-events-none"></div>
+                
+                {/* Optimized Mobile Frame */}
+                <div className="relative z-10 w-full max-w-[280px] md:max-w-[360px] max-h-[60vh] md:h-[720px] aspect-[9/18] bg-slate-900 rounded-[2.5rem] md:rounded-[3.5rem] border-[6px] md:border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col transition-all duration-500">
+                   <div className="h-6 md:h-8 w-full flex items-center justify-center"><div className="w-16 md:w-20 h-3 md:h-4 bg-slate-800 rounded-b-xl"></div></div>
+                   <iframe srcDoc={projectFiles['index.html']} className="flex-1 w-full bg-white" title="preview" />
+                   <div className="h-6 md:h-10 w-full flex items-center justify-center gap-6 md:gap-8 bg-slate-800/20 backdrop-blur-md">
+                      <button className="text-slate-500"><Circle size={10}/></button>
+                      <button className="text-slate-500"><Square size={10}/></button>
+                   </div>
+                </div>
+                
+                <button onClick={() => { setMode(AppMode.EDIT); handleBuildAPK(); }} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30 hidden lg:flex">
+                  <Rocket size={18}/> Build Android APK
+                </button>
+              </section>
+            </div>
+
+            {/* Global Mobile Chat/Preview Toggle - Always Visible in Preview Mode */}
+            <div className="lg:hidden fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-2xl p-1.5 rounded-2xl border border-white/10 flex gap-1 z-[150] shadow-[0_0_40px_rgba(0,0,0,0.8)]">
+               <button onClick={() => setMobileTab('chat')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.5)]' : 'text-slate-400'}`}>Chat</button>
+               <button onClick={() => setMobileTab('preview')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white shadow-[0_0_15px_rgba(255,45,117,0.5)]' : 'text-slate-400'}`}>Visual</button>
             </div>
           </div>
         ) : mode === AppMode.EDIT ? (
@@ -504,7 +509,7 @@ const App: React.FC = () => {
                       </div>
                    </div>
                 </div>
-
+                {/* Stats and Info Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                    <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
                       <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
@@ -525,27 +530,6 @@ const App: React.FC = () => {
                       <div>
                          <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Account Status</div>
                          <div className="text-xl font-bold text-green-400">{user.is_banned ? 'Suspended' : 'Active'}</div>
-                      </div>
-                   </div>
-                </div>
-
-                <div className="glass-tech p-8 md:p-10 rounded-[3rem] border-pink-500/5 space-y-6">
-                   <div className="flex items-center gap-3 mb-2">
-                      <MessageSquare size={20} className="text-pink-500"/>
-                      <h3 className="text-lg font-black uppercase tracking-widest">Developer Bio</h3>
-                   </div>
-                   <p className="text-slate-400 text-sm leading-relaxed italic border-l-2 border-pink-500/20 pl-6 py-2">
-                      {user.bio || "This developer is still fine-tuning their biological matrix description. No bio updated yet."}
-                   </p>
-                   
-                   <div className="pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-8 text-xs font-bold">
-                      <div className="space-y-4">
-                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Member ID</span> <span className="text-white font-mono">{user.id.slice(0, 12)}...</span></div>
-                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Security Clearance</span> <span className="text-white">{user.isAdmin ? 'Level 5 (Admin)' : 'Level 1 (Dev)'}</span></div>
-                      </div>
-                      <div className="space-y-4">
-                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Hardware Uplink</span> <span className="text-green-400">Stable</span></div>
-                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Verification Status</span> <span className={user.is_verified ? "text-pink-500" : "text-slate-400"}>{user.is_verified ? 'Authenticated' : 'Pending'}</span></div>
                       </div>
                    </div>
                 </div>
