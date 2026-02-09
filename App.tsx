@@ -274,13 +274,31 @@ const AdminPanel: React.FC<{ user: UserType }> = ({ user }) => {
                         <td className="p-6 font-black text-white">৳{tx.amount}</td>
                         <td className="p-6"><span className="text-pink-400 font-mono">{tx.payment_method}</span><br/><span className="opacity-50">{tx.trx_id}</span></td>
                         <td className="p-6">
-                          <div className="max-w-[200px] truncate opacity-60 mb-2">{tx.message || 'No Message'}</div>
-                          {tx.screenshot_url ? (
-                            <div className="relative group w-20 h-12 overflow-hidden rounded-lg cursor-zoom-in">
-                               <img src={tx.screenshot_url} className="w-full h-full object-cover group-hover:scale-125 transition-all" />
-                               <a href={tx.screenshot_url} target="_blank" className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-black">VIEW</a>
-                            </div>
-                          ) : <span className="opacity-30">No Proof</span>}
+                          <div className="flex flex-col gap-3">
+                            {tx.message ? (
+                              <div className="p-3 bg-white/5 rounded-xl border border-white/5 text-[11px] text-slate-300 leading-relaxed italic">
+                                "{tx.message}"
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-600 uppercase font-bold tracking-widest">No Message</span>
+                            )}
+                            
+                            {tx.screenshot_url ? (
+                              <div 
+                                onClick={() => window.open(tx.screenshot_url, '_blank')}
+                                className="relative group w-24 h-16 overflow-hidden rounded-xl cursor-pointer border border-white/10 hover:border-pink-500/50 transition-all shadow-xl"
+                              >
+                                 <img src={tx.screenshot_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                 <div className="absolute inset-0 bg-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                   <ViewIcon size={16} className="text-white drop-shadow-lg"/>
+                                 </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-slate-600 text-[10px] font-black uppercase">
+                                <XCircle size={12}/> No Proof
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-6">
                           {tx.status === 'pending' ? (
