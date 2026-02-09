@@ -89,6 +89,13 @@ export class DatabaseService {
     }
   }
 
+  async resetPassword(email: string) {
+    const { data, error } = await this.supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: window.location.origin + '/profile',
+    });
+    return { data, error };
+  }
+
   async updatePassword(newPassword: string) {
     const { error } = await this.supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
@@ -198,6 +205,17 @@ export class DatabaseService {
     
     if (error) throw error;
     return !!data;
+  }
+
+  async getUserTransactions(userId: string): Promise<Transaction[]> {
+    const { data, error } = await this.supabase
+      .from('transactions')
+      .select('*, packages(name)')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (error) return [];
+    return data || [];
   }
 
   async getAdminTransactions(): Promise<Transaction[]> {

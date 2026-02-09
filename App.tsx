@@ -9,7 +9,7 @@ import {
   FileJson, Layout, Users, BarChart3, Clock, Wallet, CheckCircle2, XCircle, Search, TrendingUp,
   Plus, Edit2, Ban, ShieldX, LayoutDashboard, History, Gift, Filter, Bell, ListTodo,
   Trophy, Star, Award, Layers, Target, Code2, Sparkles, BrainCircuit, ShieldEllipsis, 
-  Fingerprint as BioIcon, Camera, Laptop, Tablet, Menu, Smartphone as MobileIcon, Eye as ViewIcon, ExternalLink, Calendar, Coins
+  Fingerprint as BioIcon, Camera, Laptop, Tablet, Menu, Smartphone as MobileIcon, Eye as ViewIcon, ExternalLink, Calendar, Coins, CheckCircle
 } from 'lucide-react';
 import { AppMode, ChatMessage, User as UserType, GithubConfig, Package, Transaction, ActivityLog } from './types';
 import { GeminiService } from './services/geminiService';
@@ -55,6 +55,8 @@ const ScanPage: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
 // --- AUTH PAGE ---
 const AuthPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLoginSuccess }) => {
   const [isRegister, setIsRegister] = useState(false);
+  const [isForgot, setIsForgot] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '', name: '' });
   const [isLoading, setIsLoading] = useState(false);
   const db = DatabaseService.getInstance();
@@ -63,17 +65,23 @@ const AuthPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLo
     e.preventDefault();
     setIsLoading(true);
     try {
-      const res = isRegister ? await db.signUp(formData.email, formData.password, formData.name) : await db.signIn(formData.email, formData.password);
-      if (res.error) throw res.error;
-      if (isRegister) {
-        alert("Registration Successful! Please check your email.");
-        setIsRegister(false);
-        return;
-      }
-      const userData = await db.getUser(formData.email, res.data.user?.id);
-      if (userData) {
-        if (userData.is_banned) throw new Error("Account has been terminated by system.");
-        onLoginSuccess(userData);
+      if (isForgot) {
+        const { error } = await db.resetPassword(formData.email);
+        if (error) throw error;
+        setResetSent(true);
+      } else {
+        const res = isRegister ? await db.signUp(formData.email, formData.password, formData.name) : await db.signIn(formData.email, formData.password);
+        if (res.error) throw res.error;
+        if (isRegister) {
+          alert("Registration Successful! Please check your email.");
+          setIsRegister(false);
+          return;
+        }
+        const userData = await db.getUser(formData.email, res.data.user?.id);
+        if (userData) {
+          if (userData.is_banned) throw new Error("Account has been terminated by system.");
+          onLoginSuccess(userData);
+        }
       }
     } catch (error: any) { alert(error.message); } finally { setIsLoading(false); }
   };
@@ -83,15 +91,48 @@ const AuthPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLo
       <div className="relative w-full max-w-[420px] h-[550px] [perspective:1200px]">
         <div className={`relative w-full h-full transition-transform duration-1000 [transform-style:preserve-3d] ${isRegister ? '[transform:rotateY(-180deg)]' : ''}`}>
           <div className="absolute inset-0 [backface-visibility:hidden] glass-tech rounded-[3rem] p-10 flex flex-col justify-center border-pink-500/20 shadow-2xl">
-            <h2 className="text-3xl font-black mb-8">System <span className="text-pink-500">Login</span></h2>
-            <form onSubmit={handleAuth} className="space-y-5">
-              <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="developer@studio" />
-              <input type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="••••••••" />
-              <button disabled={isLoading} className="w-full py-4 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all">
-                {isLoading ? <Loader2 className="animate-spin mx-auto"/> : 'Execute Login'}
-              </button>
-            </form>
-            <button onClick={() => setIsRegister(true)} className="mt-6 text-xs text-pink-400 font-bold hover:underline">New developer? Registry here</button>
+            {isForgot ? (
+              <div className="animate-in fade-in zoom-in duration-500">
+                <h2 className="text-3xl font-black mb-4">Reset <span className="text-pink-500">Access</span></h2>
+                {resetSent ? (
+                  <div className="space-y-6 text-center">
+                    <div className="w-16 h-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
+                      <Mail size={32} />
+                    </div>
+                    <p className="text-sm text-slate-300 leading-relaxed font-medium">
+                      A <span className="text-pink-400 font-bold">password reset link</span> has been sent to your email address. Please check your inbox (or spam folder) and follow the instructions to reset your password.
+                    </p>
+                    <button onClick={() => {setIsForgot(false); setResetSent(false);}} className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl font-black uppercase text-xs hover:bg-white/10 transition-all">Back to Login</button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAuth} className="space-y-6">
+                    <p className="text-xs text-slate-400 leading-relaxed">Enter your registered email below, and we will send you a recovery link.</p>
+                    <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="your-email@example.com" />
+                    <button disabled={isLoading} className="w-full py-4 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all">
+                      {isLoading ? <Loader2 className="animate-spin mx-auto"/> : 'Send Recovery Link'}
+                    </button>
+                    <button type="button" onClick={() => setIsForgot(false)} className="w-full text-xs text-slate-500 hover:text-white font-bold transition-all flex items-center justify-center gap-2">
+                      <ArrowLeft size={14} /> Back to Login
+                    </button>
+                  </form>
+                )}
+              </div>
+            ) : (
+              <>
+                <h2 className="text-3xl font-black mb-8">System <span className="text-pink-500">Login</span></h2>
+                <form onSubmit={handleAuth} className="space-y-5">
+                  <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="developer@studio" />
+                  <div className="space-y-2">
+                    <input type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="••••••••" />
+                    <button type="button" onClick={() => setIsForgot(true)} className="w-full text-right text-[10px] text-pink-500/60 font-black uppercase tracking-widest hover:text-pink-500 transition-all">Forgot Key?</button>
+                  </div>
+                  <button disabled={isLoading} className="w-full py-4 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all">
+                    {isLoading ? <Loader2 className="animate-spin mx-auto"/> : 'Execute Login'}
+                  </button>
+                </form>
+                <button onClick={() => setIsRegister(true)} className="mt-6 text-xs text-pink-400 font-bold hover:underline">New developer? Registry here</button>
+              </>
+            )}
           </div>
           <div className="absolute inset-0 [backface-visibility:hidden] glass-tech rounded-[3rem] p-10 flex flex-col justify-center border-pink-500/20 shadow-2xl [transform:rotateY(180deg)]">
             <h2 className="text-3xl font-black mb-8">New <span className="text-pink-500">Registry</span></h2>
@@ -541,43 +582,72 @@ const App: React.FC = () => {
   const [packages, setPackages] = useState<Package[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   
-  // Password Change States
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPass, setNewPass] = useState('');
-  const [passError, setPassError] = useState('');
-  const [isUpdatingPass, setIsUpdatingPass] = useState(false);
-
   // Payment Flow States
   const [selectedPkg, setSelectedPkg] = useState<Package | null>(null);
   const [paymentStep, setPaymentStep] = useState<'methods' | 'form' | 'success' | 'idle'>('idle');
   const [paymentMethod, setPaymentMethod] = useState<'Bkash' | 'Nagad' | 'Rocket' | null>(null);
   const [paymentForm, setPaymentForm] = useState({ trxId: '', screenshot: '', message: '' });
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [userTransactions, setUserTransactions] = useState<Transaction[]>([]);
+  const [approvalNotify, setApprovalNotify] = useState<{show: boolean, amount: number} | null>(null);
+
+  // Password Change States
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [passError, setPassError] = useState('');
+  const [isUpdatingPass, setIsUpdatingPass] = useState(false);
 
   const gemini = useRef(new GeminiService());
   const db = DatabaseService.getInstance();
   const github = useRef(new GithubService());
 
-  // Fixed Real-time Token Sync: Ensuring stable connection and manual refresh logic
+  // Real-time Update Listener for Users and Transactions
   useEffect(() => {
     if (user?.id) {
-      const channel = db.supabase
+      // User Update Listener (Tokens)
+      const userChannel = db.supabase
         .channel(`user_updates_${user.id}`)
         .on('postgres_changes', 
           { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, 
           (payload) => {
-            console.log("Real-time token update received:", payload);
             if (payload.new && (payload.new as any).tokens !== undefined) {
               setUser(prev => prev ? { ...prev, tokens: (payload.new as any).tokens } : null);
             }
           }
         )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') console.log("Token sync established.");
-        });
-      return () => { db.supabase.removeChannel(channel); };
+        .subscribe();
+
+      // Transaction Status Change Listener for Notifications
+      const txChannel = db.supabase
+        .channel(`tx_updates_${user.id}`)
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `user_id=eq.${user.id}` },
+          (payload) => {
+            const oldTx = payload.old as Transaction;
+            const newTx = payload.new as Transaction;
+            
+            // If status changed to completed, notify user
+            if (newTx.status === 'completed' && oldTx.status === 'pending') {
+              setApprovalNotify({ show: true, amount: newTx.amount });
+              // Refresh history if in profile
+              if (mode === AppMode.PROFILE) {
+                db.getUserTransactions(user.id).then(setUserTransactions);
+              }
+            } else if (newTx.status === 'rejected') {
+               if (mode === AppMode.PROFILE) {
+                 db.getUserTransactions(user.id).then(setUserTransactions);
+               }
+            }
+          }
+        )
+        .subscribe();
+
+      return () => { 
+        db.supabase.removeChannel(userChannel); 
+        db.supabase.removeChannel(txChannel);
+      };
     }
-  }, [user?.id]);
+  }, [user?.id, mode]);
 
   useEffect(() => {
     db.getCurrentSession().then(async session => {
@@ -592,6 +662,12 @@ const App: React.FC = () => {
     if (savedGit) setGithubConfig(JSON.parse(savedGit));
   }, []);
 
+  useEffect(() => {
+    if (mode === AppMode.PROFILE && user) {
+      db.getUserTransactions(user.id).then(setUserTransactions);
+    }
+  }, [mode, user]);
+
   useEffect(() => { if (logoClicks >= 3) { setMode(AppMode.ADMIN); setLogoClicks(0); } }, [logoClicks]);
 
   const handleLogout = async () => { await db.signOut(); setUser(null); setIsScanned(false); };
@@ -601,7 +677,6 @@ const App: React.FC = () => {
     setIsUpdatingPass(true);
     setPassError('');
     try {
-      // Security: Re-authenticate session before updating sensitive data
       const { error: verifyError } = await db.supabase.auth.signInWithPassword({
         email: user?.email || '',
         password: oldPassword
@@ -764,6 +839,20 @@ const App: React.FC = () => {
 
   return (
     <div className="h-[100dvh] flex flex-col text-slate-100 bg-[#0a0110] overflow-hidden">
+      {/* Real-time Approval Notification */}
+      {approvalNotify && approvalNotify.show && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in zoom-in duration-500">
+           <div className="glass-tech p-12 rounded-[3.5rem] text-center max-w-sm border-pink-500/30 shadow-[0_0_80px_rgba(34,197,94,0.3)] border-2">
+              <div className="w-24 h-24 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-8 border-2 border-green-500/50 shadow-lg animate-bounce">
+                <CheckCircle size={48}/>
+              </div>
+              <h3 className="text-3xl font-black mb-4 text-white uppercase tracking-tighter">Payment Confirmed!</h3>
+              <p className="text-sm text-slate-400 leading-relaxed mb-10">আপনার পেমেন্ট রিকোয়েস্টটি অ্যাপ্রুভ করা হয়েছে। সফলভাবে <span className="text-pink-400 font-bold">৳{approvalNotify.amount}</span> যোগ করা হয়েছে।</p>
+              <button onClick={() => setApprovalNotify(null)} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95">Great!</button>
+           </div>
+        </div>
+      )}
+
       {showCompletion && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-500">
            <div className="bg-pink-600 text-white px-8 py-4 rounded-full shadow-[0_0_40px_rgba(255,45,117,0.6)] flex items-center gap-4 border border-white/20">
@@ -933,11 +1022,13 @@ const App: React.FC = () => {
              )}
           </div>
         ) : mode === AppMode.PROFILE ? (
-          <div className="flex-1 p-10 overflow-y-auto scroll-smooth">
+          <div className="flex-1 p-6 md:p-10 overflow-y-auto scroll-smooth">
              <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 pb-20">
-                <div className="glass-tech p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative">
+                {/* Profile Header */}
+                <div className="glass-tech p-8 md:p-12 rounded-[2.5rem] md:rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative overflow-hidden">
+                   <div className="absolute inset-0 shimmer-pink opacity-5 pointer-events-none"></div>
                    <div className="relative group cursor-pointer" onClick={handleAvatarUpload}>
-                      <div className="w-40 h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl overflow-hidden bg-slate-800">
+                      <div className="w-32 h-32 md:w-40 md:h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl overflow-hidden bg-slate-800">
                         <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[2rem]" alt="Profile"/>
                       </div>
                       <div className="absolute inset-0 bg-black/60 rounded-[2.5rem] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
@@ -947,8 +1038,8 @@ const App: React.FC = () => {
                         </div>
                       </div>
                    </div>
-                   <div className="text-center md:text-left space-y-2">
-                      <h2 className="text-5xl font-black text-white tracking-tight">{user.name}</h2>
+                   <div className="text-center md:text-left space-y-2 relative z-10">
+                      <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight">{user.name}</h2>
                       <div className="flex items-center gap-2 justify-center md:justify-start">
                          <span className="text-pink-400 font-bold text-xs bg-pink-500/5 px-3 py-1 rounded-lg border border-pink-500/10">{user.email}</span>
                          {user.is_verified && <div className="text-blue-400 bg-blue-500/10 p-1.5 rounded-full"><ShieldCheck size={14}/></div>}
@@ -956,6 +1047,7 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
+                {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                    <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
                       <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
@@ -971,7 +1063,41 @@ const App: React.FC = () => {
                    </div>
                 </div>
 
-                <div className="glass-tech p-10 rounded-[3rem] border-white/5 space-y-8 shadow-xl">
+                {/* Payment History Section */}
+                <div className="glass-tech p-8 md:p-10 rounded-[2.5rem] border-white/5 space-y-6 shadow-xl">
+                   <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3"><History className="text-pink-500"/> My <span className="text-pink-500">Payments</span></h3>
+                   <div className="space-y-4">
+                      {userTransactions.length > 0 ? (
+                        userTransactions.map(tx => (
+                          <div key={tx.id} className="flex flex-col md:flex-row md:items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/5 gap-4">
+                             <div className="flex items-center gap-4">
+                                <div className={`p-3 rounded-xl ${tx.status === 'completed' ? 'bg-green-500/10 text-green-400' : tx.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
+                                   <CreditCard size={20} />
+                                </div>
+                                <div>
+                                   <div className="font-bold text-white text-sm">৳{tx.amount} • {tx.payment_method}</div>
+                                   <div className="text-[10px] text-slate-500 font-mono mt-0.5">TrxID: {tx.trx_id}</div>
+                                </div>
+                             </div>
+                             <div className="flex items-center justify-between md:flex-col md:items-end gap-2">
+                                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider ${tx.status === 'completed' ? 'bg-green-600/20 text-green-400' : tx.status === 'pending' ? 'bg-yellow-600/20 text-yellow-400' : 'bg-red-600/20 text-red-400'}`}>
+                                   {tx.status}
+                                </span>
+                                <span className="text-[10px] text-slate-600">{new Date(tx.created_at).toLocaleDateString()}</span>
+                             </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-10 text-slate-600">
+                           <div className="mb-4 flex justify-center"><XCircle size={32} opacity={0.3}/></div>
+                           <p className="text-xs font-black uppercase tracking-widest">No payment records found.</p>
+                        </div>
+                      )}
+                   </div>
+                </div>
+
+                {/* Security Settings */}
+                <div className="glass-tech p-8 md:p-10 rounded-[2.5rem] border-white/5 space-y-8 shadow-xl">
                    <h3 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3"><Lock className="text-pink-500"/> Security <span className="text-pink-500">Settings</span></h3>
                    <div className="space-y-6">
                       <div className="space-y-2">
