@@ -317,7 +317,7 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex overflow-hidden relative pb-20 md:pb-0">
         {mode === AppMode.PREVIEW ? (
-          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
             <section className={`w-full lg:w-[450px] border-r border-pink-500/10 flex flex-col bg-[#01040f]/50 backdrop-blur-xl h-full ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="flex-1 p-6 overflow-y-auto code-scroll space-y-6 pb-32">
                 {messages.length > 0 ? messages.map(m => (
@@ -353,9 +353,11 @@ const App: React.FC = () => {
                 </div>
               </div>
             </section>
-            <section className={`flex-1 flex flex-col items-center justify-center p-2 md:p-4 relative ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
-              <div className="absolute inset-0 bg-grid opacity-30"></div>
-              <div className="relative z-10 w-full max-w-[340px] md:max-w-[360px] aspect-[9/18.5] md:h-[720px] bg-slate-900 rounded-[3rem] md:rounded-[3.5rem] border-[6px] md:border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col">
+            
+            <section className={`flex-1 flex flex-col items-center justify-start md:justify-center p-4 md:p-4 relative overflow-y-auto md:overflow-hidden ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
+              <div className="absolute inset-0 bg-grid opacity-30 pointer-events-none"></div>
+              
+              <div className="relative z-10 w-full max-w-[310px] md:max-w-[360px] aspect-[9/18.5] md:h-[720px] bg-slate-900 rounded-[2.5rem] md:rounded-[3.5rem] border-[6px] md:border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col mt-4 md:mt-0 transition-transform duration-500">
                  <div className="h-6 md:h-8 w-full flex items-center justify-center"><div className="w-16 md:w-20 h-4 md:h-5 bg-slate-800 rounded-b-xl"></div></div>
                  <iframe srcDoc={projectFiles['index.html']} className="flex-1 w-full bg-white" title="preview" />
                  <div className="h-8 md:h-10 w-full flex items-center justify-center gap-6 md:gap-8 bg-slate-800/20 backdrop-blur-md">
@@ -363,16 +365,17 @@ const App: React.FC = () => {
                     <button className="text-slate-500"><Square size={12}/></button>
                  </div>
               </div>
+              
               <button onClick={() => { setMode(AppMode.EDIT); handleBuildAPK(); }} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30 hidden lg:flex">
                 <Rocket size={18}/> Build Android APK
               </button>
-              
-              {/* Mobile Chat/Preview Toggle */}
-              <div className="lg:hidden fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 flex gap-1 z-[110]">
-                 <button onClick={() => setMobileTab('chat')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400'}`}>Chat</button>
-                 <button onClick={() => setMobileTab('preview')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400'}`}>Visual</button>
-              </div>
             </section>
+
+            {/* Mobile Chat/Preview Toggle - Outside sections to be visible everywhere */}
+            <div className="lg:hidden fixed bottom-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 flex gap-1 z-[120] shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+               <button onClick={() => setMobileTab('chat')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'chat' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>Chat</button>
+               <button onClick={() => setMobileTab('preview')} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase transition-all ${mobileTab === 'preview' ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'}`}>Visual</button>
+            </div>
           </div>
         ) : mode === AppMode.EDIT ? (
           <div className="flex-1 flex overflow-hidden">
