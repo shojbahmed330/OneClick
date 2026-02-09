@@ -9,18 +9,154 @@ import {
   FileJson, Layout, Users, BarChart3, Clock, Wallet, CheckCircle2, XCircle, Search, TrendingUp,
   Plus, Edit2, Ban, ShieldX, LayoutDashboard, History, Gift, Filter, Bell, ListTodo,
   Trophy, Star, Award, Layers, Target, Code2, Sparkles, BrainCircuit, ShieldEllipsis, 
-  Fingerprint as BioIcon, Camera, Laptop, Tablet, Menu, Smartphone as MobileIcon, Eye as ViewIcon, ExternalLink
+  Fingerprint as BioIcon, Camera, Laptop, Tablet, Menu, Smartphone as MobileIcon, Eye as ViewIcon, ExternalLink, Calendar
 } from 'lucide-react';
 import { AppMode, ChatMessage, User as UserType, GithubConfig, Package, Transaction, ActivityLog } from './types';
 import { GeminiService } from './services/geminiService';
 import { DatabaseService } from './services/dbService';
 import { GithubService } from './services/githubService';
 
-// --- Auth components are restored and themed ---
+// --- BIOMETRIC SCAN PAGE ---
+const ScanPage: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
+  const [isScanning, setIsScanning] = useState(false);
+  const handleStartAuth = () => {
+    setIsScanning(true);
+    setTimeout(() => onFinish(), 2000);
+  };
+  return (
+    <div className="h-[100dvh] w-full flex flex-col items-center justify-center bg-[#0a0110] text-white relative overflow-hidden p-4">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,45,117,0.15)_0%,_transparent_70%)] opacity-50"></div>
+      <div className="flex flex-col items-center text-center animate-in fade-in zoom-in duration-700">
+        <div className="mb-12 space-y-2">
+          <h1 className="text-4xl md:text-6xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-white via-pink-400 to-pink-600 drop-shadow-[0_0_20px_rgba(255,45,117,0.4)]">
+            OneClick Studio
+          </h1>
+          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-pink-500/60">
+            Secure Uplink System • AI Core
+          </p>
+        </div>
+        <div onClick={!isScanning ? handleStartAuth : undefined} className={`relative w-40 h-40 md:w-48 md:h-48 flex items-center justify-center cursor-pointer transition-transform active:scale-95 group mb-12`}>
+          <div className={`absolute inset-0 bg-pink-500/10 rounded-full blur-3xl group-hover:bg-pink-500/20 transition-all ${!isScanning ? 'animate-pulse' : ''}`}></div>
+          <Fingerprint size={isScanning ? 80 : 70} className={`${isScanning ? 'text-pink-400 scale-110' : 'text-pink-600'} transition-all duration-500 relative z-10 drop-shadow-[0_0_25px_rgba(255,45,117,0.6)] ${!isScanning ? 'animate-[float_3s_ease-in-out_infinite]' : 'animate-pulse'}`} />
+          {isScanning && <div className="absolute top-0 left-0 w-full h-1 bg-pink-400 shadow-[0_0_25px_#ff2d75] rounded-full animate-[scanning_1.5s_infinite] z-20"></div>}
+        </div>
+        <h2 className={`text-sm md:text-xl font-bold tracking-widest uppercase transition-colors duration-500 ${isScanning ? 'text-pink-400' : 'text-slate-500'}`}>
+          {isScanning ? 'Identity Scanning...' : 'Touch sensor to initiate login'}
+        </h2>
+      </div>
+      <style>{`
+        @keyframes scanning { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+      `}</style>
+    </div>
+  );
+};
+
+// --- AUTH PAGE (LOGIN/REGISTER) ---
+const AuthPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLoginSuccess }) => {
+  const [isRegister, setIsRegister] = useState(false);
+  const [formData, setFormData] = useState({ email: '', password: '', name: '' });
+  const [isLoading, setIsLoading] = useState(false);
+  const db = DatabaseService.getInstance();
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const res = isRegister ? await db.signUp(formData.email, formData.password, formData.name) : await db.signIn(formData.email, formData.password);
+      if (res.error) throw res.error;
+      if (isRegister) {
+        alert("Registration Successful! Please check your email.");
+        setIsRegister(false);
+        return;
+      }
+      const userData = await db.getUser(formData.email, res.data.user?.id);
+      if (userData) {
+        if (userData.is_banned) throw new Error("Account has been terminated by system.");
+        onLoginSuccess(userData);
+      }
+    } catch (error: any) { alert(error.message); } finally { setIsLoading(false); }
+  };
+
+  return (
+    <div className="h-[100dvh] w-full flex items-center justify-center bg-[#0a0110] text-white p-4">
+      <div className="relative w-full max-w-[420px] h-[550px] [perspective:1200px]">
+        <div className={`relative w-full h-full transition-transform duration-1000 [transform-style:preserve-3d] ${isRegister ? '[transform:rotateY(-180deg)]' : ''}`}>
+          {/* Login Front */}
+          <div className="absolute inset-0 [backface-visibility:hidden] glass-tech rounded-[3rem] p-10 flex flex-col justify-center border-pink-500/20 shadow-2xl">
+            <h2 className="text-3xl font-black mb-8">System <span className="text-pink-500">Login</span></h2>
+            <form onSubmit={handleAuth} className="space-y-5">
+              <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="developer@studio" />
+              <input type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="••••••••" />
+              <button disabled={isLoading} className="w-full py-4 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all">
+                {isLoading ? <Loader2 className="animate-spin mx-auto"/> : 'Execute Login'}
+              </button>
+            </form>
+            <button onClick={() => setIsRegister(true)} className="mt-6 text-xs text-pink-400 font-bold hover:underline">New developer? Registry here</button>
+          </div>
+          {/* Register Back */}
+          <div className="absolute inset-0 [backface-visibility:hidden] glass-tech rounded-[3rem] p-10 flex flex-col justify-center border-pink-500/20 shadow-2xl [transform:rotateY(180deg)]">
+            <h2 className="text-3xl font-black mb-8">New <span className="text-pink-500">Registry</span></h2>
+            <form onSubmit={handleAuth} className="space-y-5">
+              <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="Full Name" />
+              <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="Email" />
+              <input type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-white text-sm outline-none focus:border-pink-500/50" placeholder="••••••••" />
+              <button disabled={isLoading} className="w-full py-4 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all">
+                {isLoading ? <Loader2 className="animate-spin mx-auto"/> : 'Join Studio'}
+              </button>
+            </form>
+            <button onClick={() => setIsRegister(false)} className="mt-6 text-xs text-pink-400 font-bold hover:underline">Already registered? Access terminal</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- ADMIN LOGIN PAGE ---
+const AdminLoginPage: React.FC<{ onLoginSuccess: (user: UserType) => void }> = ({ onLoginSuccess }) => {
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [isLoading, setIsLoading] = useState(false);
+  const db = DatabaseService.getInstance();
+
+  const handleAdminAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const res = await db.signIn(formData.email, formData.password);
+      if (res.error) throw res.error;
+      const userData = await db.getUser(formData.email, res.data.user?.id);
+      if (userData && userData.isAdmin) {
+        onLoginSuccess(userData);
+      } else {
+        throw new Error("Access Denied: Non-admin terminal access attempt.");
+      }
+    } catch (error: any) { alert(error.message); } finally { setIsLoading(false); }
+  };
+
+  return (
+    <div className="h-screen w-full flex flex-col items-center justify-center bg-[#0a0110] text-white p-4">
+      <div className="glass-tech p-10 rounded-[3rem] w-full max-w-md border-pink-500/20 shadow-2xl">
+        <div className="text-center mb-10">
+          <ShieldAlert size={48} className="mx-auto text-pink-500 mb-4" />
+          <h2 className="text-3xl font-black tracking-tight">Admin <span className="text-pink-500">Terminal</span></h2>
+        </div>
+        <form onSubmit={handleAdminAuth} className="space-y-6">
+          <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-sm" placeholder="Admin ID" />
+          <input type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 text-sm" placeholder="Master Key" />
+          <button disabled={isLoading} className="w-full py-4 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95">
+            {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Authorize Access'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserType | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isScanned, setIsScanned] = useState(false);
   const [path, setPath] = useState(window.location.pathname);
   const [mode, setMode] = useState<AppMode>(AppMode.PREVIEW);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -30,14 +166,10 @@ const App: React.FC = () => {
     'index.html': '<div style="background:#0a0110; height:100vh; display:flex; align-items:center; justify-content:center; font-family:sans-serif; color:#ff2d75;"><h1>System Online</h1></div>'
   });
   
-  // Build & Config States
   const [githubConfig, setGithubConfig] = useState<GithubConfig>({ token: '', repo: '', owner: '' });
   const [buildStatus, setBuildStatus] = useState<{ status: 'idle' | 'pushing' | 'building' | 'success' | 'error', message: string, apkUrl?: string }>({ status: 'idle', message: '' });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'chat' | 'preview'>('chat');
   const [logoClicks, setLogoClicks] = useState(0);
-
-  // Added state for packages to correctly handle async data and avoid JSX Promise errors
   const [packages, setPackages] = useState<Package[]>([]);
 
   const gemini = useRef(new GeminiService());
@@ -48,17 +180,18 @@ const App: React.FC = () => {
     db.getCurrentSession().then(async session => {
       if (session?.user) {
         const userData = await db.getUser(session.user.email || '', session.user.id);
-        if (userData) setUser(userData);
+        if (userData) {
+          setUser(userData);
+          setIsScanned(true);
+        }
       }
       setAuthLoading(false);
     });
     
-    // Fetch packages into state on mount
     db.getPackages().then(pkgs => {
       if (pkgs && pkgs.length > 0) setPackages(pkgs);
     });
 
-    // Load Github Config from local storage
     const savedGit = localStorage.getItem('github_config');
     if (savedGit) setGithubConfig(JSON.parse(savedGit));
   }, []);
@@ -70,6 +203,7 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     await db.signOut();
     setUser(null);
+    setIsScanned(false);
   };
 
   const handleSend = async () => {
@@ -89,7 +223,7 @@ const App: React.FC = () => {
 
   const handleBuildAPK = async () => {
     if (!githubConfig.token || !githubConfig.repo) {
-      alert("গিটহাব কনফিগারেশন সেট করুন!");
+      alert("Please configure GitHub settings first!");
       setMode(AppMode.SETTINGS);
       return;
     }
@@ -119,23 +253,25 @@ const App: React.FC = () => {
   };
 
   if (authLoading) return <div className="h-screen w-full flex items-center justify-center bg-[#0a0110] text-[#ff2d75]"><Loader2 className="animate-spin" size={40}/></div>;
-  if (!user) return <div className="h-screen w-full flex items-center justify-center bg-[#0a0110] text-white">Please log in to continue.</div>;
+  
+  if (!user) {
+    if (path === '/admin') return <AdminLoginPage onLoginSuccess={setUser} />;
+    if (!isScanned) return <ScanPage onFinish={() => setIsScanned(true)} />;
+    return <AuthPage onLoginSuccess={setUser} />;
+  }
 
   return (
     <div className="h-[100dvh] flex flex-col text-slate-100 bg-[#0a0110] overflow-hidden">
-      {/* --- HEADER (Restored Gear Icon) --- */}
       <header className="h-16 md:h-20 border-b border-pink-500/10 glass-tech flex items-center justify-between px-4 md:px-8 z-50 relative cyber-border-pink">
         <div onClick={() => setLogoClicks(c => c + 1)} className="flex items-center gap-3 cursor-pointer select-none group">
           <div className="w-10 h-10 bg-pink-500 rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(255,45,117,0.5)] group-hover:scale-110 transition-transform"><Cpu size={20} className="text-white"/></div>
           <span className="font-black text-sm uppercase tracking-tighter hidden sm:block">OneClick <span className="text-pink-400">Studio</span></span>
         </div>
-
         <nav className="hidden lg:flex bg-black/40 rounded-xl p-1 border border-white/5 shadow-2xl">
           {[AppMode.PREVIEW, AppMode.EDIT, AppMode.SHOP, AppMode.PROFILE].map(m => (
             <button key={m} onClick={() => setMode(m)} className={`px-6 py-2.5 text-[10px] font-black uppercase rounded-lg transition-all ${mode === m ? 'active-nav-pink' : 'text-slate-400 hover:text-white'}`}>{m}</button>
           ))}
         </nav>
-
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-full text-xs font-bold text-pink-400">{user.tokens} Tokens</div>
           <button onClick={() => setMode(AppMode.SETTINGS)} className={`p-2 rounded-lg transition-all ${mode === AppMode.SETTINGS ? 'bg-pink-500 text-white' : 'text-slate-400 hover:bg-white/5'}`}><Settings size={20}/></button>
@@ -146,7 +282,6 @@ const App: React.FC = () => {
       <main className="flex-1 flex overflow-hidden relative">
         {mode === AppMode.PREVIEW ? (
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-            {/* CHAT AREA */}
             <section className={`w-full lg:w-[450px] border-r border-pink-500/10 flex flex-col bg-[#01040f]/50 backdrop-blur-xl h-full ${mobileTab === 'preview' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="flex-1 p-6 overflow-y-auto code-scroll space-y-6 pb-32">
                 {messages.length > 0 ? messages.map(m => (
@@ -169,12 +304,8 @@ const App: React.FC = () => {
                 </div>
               </div>
             </section>
-
-            {/* PREVIEW AREA (Mobile Friendly & Fixed) */}
             <section className={`flex-1 flex flex-col items-center justify-center p-4 relative ${mobileTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="absolute inset-0 bg-grid opacity-30"></div>
-              
-              {/* Device Frame */}
               <div className="relative z-10 w-full max-w-[360px] h-[720px] bg-slate-900 rounded-[3.5rem] border-[8px] border-slate-800 shadow-[0_0_60px_-15px_rgba(255,45,117,0.3)] overflow-hidden flex flex-col">
                  <div className="h-8 w-full flex items-center justify-center"><div className="w-20 h-5 bg-slate-800 rounded-b-xl"></div></div>
                  <iframe srcDoc={projectFiles['index.html']} className="flex-1 w-full bg-white" title="preview" />
@@ -183,13 +314,9 @@ const App: React.FC = () => {
                     <button className="text-slate-500"><Square size={14}/></button>
                  </div>
               </div>
-
-              {/* Build Trigger Floating Button */}
               <button onClick={handleBuildAPK} className="absolute bottom-10 right-10 flex items-center gap-3 px-8 py-4 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(255,45,117,0.5)] active:scale-95 transition-all z-30">
                 <Rocket size={18}/> Build Android APK
               </button>
-
-              {/* Mobile Tab Switcher */}
               <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-xl p-2 rounded-2xl border border-white/10 flex gap-2 z-[100]">
                  <button onClick={() => setMobileTab('chat')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase ${mobileTab === 'chat' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Chat</button>
                  <button onClick={() => setMobileTab('preview')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase ${mobileTab === 'preview' ? 'bg-pink-600 text-white' : 'text-slate-400'}`}>Visual</button>
@@ -200,13 +327,11 @@ const App: React.FC = () => {
           <div className="flex-1 flex flex-col items-center justify-center p-4 md:p-10 animate-in fade-in">
              <div className="glass-tech w-full max-w-2xl p-10 md:p-16 rounded-[3rem] border-pink-500/20 text-center relative overflow-hidden">
                 <div className="shimmer-pink absolute inset-0 pointer-events-none opacity-20"></div>
-                
                 {buildStatus.status === 'success' ? (
                   <div className="space-y-8">
                      <div className="w-24 h-24 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-green-500/50 shadow-[0_0_30px_rgba(34,197,94,0.3)] animate-bounce"><CheckCircle2 size={48}/></div>
                      <h2 className="text-3xl md:text-4xl font-black text-white">APK Ready for Install</h2>
                      <div id="qrcode" className="p-6 bg-white rounded-3xl inline-block shadow-2xl"></div>
-                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Scan QR to install on Mobile</p>
                      <div className="flex flex-col sm:flex-row gap-4 justify-center">
                         <a href={buildStatus.apkUrl} download className="flex items-center justify-center gap-3 px-10 py-5 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl active:scale-95 transition-all"><Download size={20}/> Download APK</a>
                         <button onClick={() => setMode(AppMode.PREVIEW)} className="px-10 py-5 bg-white/5 border border-white/10 rounded-2xl font-black uppercase text-sm hover:bg-white/10 transition-all">Back to Editor</button>
@@ -225,7 +350,6 @@ const App: React.FC = () => {
                     <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden border border-white/5">
                        <div className="h-full bg-gradient-to-r from-pink-600 to-purple-600 w-3/4 animate-[progress_5s_infinite] shadow-[0_0_15px_#ff2d75]"></div>
                     </div>
-                    <style>{`@keyframes progress { 0% { width: 0%; } 50% { width: 70%; } 100% { width: 100%; } }`}</style>
                   </div>
                 )}
              </div>
@@ -238,35 +362,19 @@ const App: React.FC = () => {
                    <h2 className="text-3xl font-black tracking-tight text-white">GitHub <span className="text-pink-400">Uplink</span></h2>
                 </div>
                 <div className="space-y-6">
-                   <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-4">Personal Access Token</label>
-                      <input type="password" value={githubConfig.token} onChange={e => setGithubConfig({...githubConfig, token: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-pink-400 outline-none focus:border-pink-500/50" placeholder="ghp_xxxxxxxxxxxx" />
-                   </div>
+                   <input type="password" value={githubConfig.token} onChange={e => setGithubConfig({...githubConfig, token: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-pink-400 outline-none" placeholder="Personal Access Token" />
                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-4">Owner (Username)</label>
-                         <input type="text" value={githubConfig.owner} onChange={e => setGithubConfig({...githubConfig, owner: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="shojib_dev" />
-                      </div>
-                      <div className="space-y-2">
-                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-4">Repo Name</label>
-                         <input type="text" value={githubConfig.repo} onChange={e => setGithubConfig({...githubConfig, repo: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="my-awesome-app" />
-                      </div>
+                      <input type="text" value={githubConfig.owner} onChange={e => setGithubConfig({...githubConfig, owner: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="Username" />
+                      <input type="text" value={githubConfig.repo} onChange={e => setGithubConfig({...githubConfig, repo: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white" placeholder="Repo Name" />
                    </div>
-                   <button onClick={() => { localStorage.setItem('github_config', JSON.stringify(githubConfig)); alert("Configuration Secured!"); setMode(AppMode.PREVIEW); }} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl active:scale-95 flex items-center justify-center gap-3">
-                      <Save size={20}/> Save Uplink Config
-                   </button>
+                   <button onClick={() => { localStorage.setItem('github_config', JSON.stringify(githubConfig)); alert("Saved!"); setMode(AppMode.PREVIEW); }} className="w-full py-5 bg-pink-600 rounded-2xl font-black uppercase text-sm shadow-xl flex items-center justify-center gap-3"><Save size={20}/> Save Config</button>
                 </div>
              </div>
           </div>
         ) : mode === AppMode.SHOP ? (
           <div className="flex-1 p-6 md:p-20 overflow-y-auto">
              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                {/* Fixed Error: Promise returned by db.getPackages() cannot be rendered in JSX. Using packages state with fallback. */}
-                {(packages.length > 0 ? packages : [
-                  { name: 'Starter', tokens: 50, price: 500 },
-                  { name: 'Pro', tokens: 250, price: 1500 },
-                  { name: 'Elite', tokens: 1000, price: 5000 }
-                ]).map((p, i) => (
+                {(packages.length > 0 ? packages : [{ name: 'Starter', tokens: 50, price: 500 }, { name: 'Pro', tokens: 250, price: 1500 }, { name: 'Elite', tokens: 1000, price: 5000 }]).map((p, i) => (
                   <div key={i} className="glass-tech p-10 rounded-[3rem] text-center group hover:border-pink-500/50 transition-all border-white/5">
                      <PackageIcon size={48} className="mx-auto text-pink-500 mb-6 group-hover:scale-125 transition-transform"/>
                      <h3 className="text-2xl font-black mb-2">{p.name}</h3>
@@ -277,19 +385,72 @@ const App: React.FC = () => {
              </div>
           </div>
         ) : mode === AppMode.PROFILE ? (
-          <div className="flex-1 p-6 md:p-10 overflow-y-auto">
-             <div className="max-w-4xl mx-auto glass-tech p-10 md:p-16 rounded-[4rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-10 shadow-2xl relative overflow-hidden">
-                <div className="shimmer-pink absolute inset-0 opacity-10 pointer-events-none"></div>
-                <div className="relative w-48 h-48 md:w-56 md:h-56 rounded-[3.5rem] border-4 border-pink-500/30 p-2 shadow-2xl">
-                   <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[3rem]" alt="Dev Profile"/>
-                   <div className="absolute -bottom-2 -right-2 w-14 h-14 bg-pink-600 rounded-2xl flex items-center justify-center border-4 border-[#0a0110] shadow-xl"><Sparkles size={24} className="text-white"/></div>
+          <div className="flex-1 p-6 md:p-10 overflow-y-auto scroll-smooth">
+             <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+                {/* Profile Main Header Card */}
+                <div className="glass-tech p-8 md:p-12 rounded-[3rem] border-pink-500/10 flex flex-col md:flex-row items-center gap-8 shadow-2xl relative overflow-hidden">
+                   <div className="absolute top-0 right-0 p-8">
+                      {user.is_verified && <div className="flex items-center gap-2 px-4 py-2 bg-pink-500/10 border border-pink-500/20 rounded-full text-[10px] font-black uppercase text-pink-400 tracking-widest"><ShieldCheck size={14}/> Verified Pro</div>}
+                   </div>
+                   <div className="relative group">
+                      <div className="w-32 h-32 md:w-40 md:h-40 rounded-[2.5rem] border-4 border-pink-500/20 p-1.5 shadow-2xl transition-transform group-hover:scale-105 duration-300">
+                         <img src={user.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} className="w-full h-full object-cover rounded-[2rem]" alt="Profile"/>
+                      </div>
+                      <div className="absolute -bottom-2 -right-2 bg-pink-600 p-2 rounded-xl border-4 border-[#0a0110] shadow-lg"><Edit2 size={16} className="text-white"/></div>
+                   </div>
+                   <div className="text-center md:text-left space-y-2">
+                      <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white">{user.name}</h2>
+                      <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                         <span className="text-pink-400 font-bold text-xs bg-pink-500/5 px-3 py-1 rounded-lg border border-pink-500/10">{user.email}</span>
+                         {user.isAdmin && <span className="text-purple-400 font-bold text-xs bg-purple-500/5 px-3 py-1 rounded-lg border border-purple-500/10 uppercase tracking-tighter">System Lead</span>}
+                      </div>
+                   </div>
                 </div>
-                <div className="flex-1 text-center md:text-left">
-                   <h2 className="text-5xl md:text-7xl font-black tracking-tighter text-white mb-2">{user.name}</h2>
-                   <p className="text-pink-400 font-black uppercase tracking-[0.5em] text-xs mb-8">{user.email}</p>
-                   <div className="inline-flex items-center gap-4 px-8 py-4 bg-pink-500/10 border border-pink-500/20 rounded-[2rem]">
-                      <Wallet className="text-pink-400" size={24}/>
-                      <span className="text-3xl font-black text-white">{user.tokens} <span className="text-[10px] opacity-30 uppercase">Balance</span></span>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Wallet size={24}/></div>
+                      <div>
+                         <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Available Units</div>
+                         <div className="text-2xl font-black text-white">{user.tokens}</div>
+                      </div>
+                   </div>
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Calendar size={24}/></div>
+                      <div>
+                         <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Joined Studio</div>
+                         <div className="text-xl font-bold text-white">{new Date(user.joinedAt).toLocaleDateString()}</div>
+                      </div>
+                   </div>
+                   <div className="glass-tech p-6 rounded-3xl border-pink-500/5 flex items-center gap-4 hover:border-pink-500/20 transition-all">
+                      <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500"><Activity size={24}/></div>
+                      <div>
+                         <div className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Account Status</div>
+                         <div className="text-xl font-bold text-green-400">{user.is_banned ? 'Suspended' : 'Active'}</div>
+                      </div>
+                   </div>
+                </div>
+
+                {/* Bio & Details Card */}
+                <div className="glass-tech p-8 md:p-10 rounded-[3rem] border-pink-500/5 space-y-6">
+                   <div className="flex items-center gap-3 mb-2">
+                      <MessageSquare size={20} className="text-pink-500"/>
+                      <h3 className="text-lg font-black uppercase tracking-widest">Developer Bio</h3>
+                   </div>
+                   <p className="text-slate-400 text-sm leading-relaxed italic border-l-2 border-pink-500/20 pl-6 py-2">
+                      {user.bio || "This developer is still fine-tuning their biological matrix description. No bio updated yet."}
+                   </p>
+                   
+                   <div className="pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-8 text-xs font-bold">
+                      <div className="space-y-4">
+                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Member ID</span> <span className="text-white font-mono">{user.id.slice(0, 12)}...</span></div>
+                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Security Clearance</span> <span className="text-white">{user.isAdmin ? 'Level 5 (Admin)' : 'Level 1 (Dev)'}</span></div>
+                      </div>
+                      <div className="space-y-4">
+                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Hardware Uplink</span> <span className="text-green-400">Stable</span></div>
+                         <div className="flex justify-between items-center text-slate-500 uppercase tracking-tighter"><span>Verification Status</span> <span className={user.is_verified ? "text-pink-500" : "text-slate-400"}>{user.is_verified ? 'Authenticated' : 'Pending'}</span></div>
+                      </div>
                    </div>
                 </div>
              </div>
